@@ -1,10 +1,12 @@
 import subprocess
 import sys
 import os
+import os.path
 import cPickle as pickle
 import json
 import struct
 import pkgutil
+import base64
 
 __metaclass__ = type
 
@@ -53,15 +55,16 @@ class Tunnel:
         self.req_id += 1
         return self.req_id
 
-    def write_msg(self, msg):
+    def write_msg(self, op, **kwargs):
         """Write one message to the subprocess.
 
-        Because we can already execute arbitrary code on the remote host,
-        we can safely use pickle for the protocol in this direction, which
-        is also the more important direction for our RPC.
+        This uses a chunked JSON protocol.
 
         """
-        pickle.dump(msg, self.proc.stdin)
+        kwargs['op'] = op
+        buf = json.dumps(kwargs)
+        self.proc.stdin.write(struct.pack('!L', len(buf)))
+        self.proc.stdin.write(buf)
 
     def read_msg(self):
         """Read one message from the subprocess.
@@ -71,8 +74,38 @@ class Tunnel:
 
         """
         buf = self.proc.stdout.read(4)
+        if not buf:
+            raise IOError('Invalid message from remote.')
         (size,) = struct.unpack('!L', buf)
         return json.loads(self.proc.stdout.read(size))
+
+    def handle_imp(self, mod):
+        stem = mod.replace('.', os.sep)
+        paths = [
+            (True, os.path.join(stem, '__init__.py')),
+            (False, stem + '.py'),
+        ]
+        for root in sys.path:
+            for is_pkg, rel in paths:
+                path = os.path.join(root, rel)
+                if os.path.exists(path):
+                    self.write_msg(
+                        'imp',
+                        mod=mod,
+                        exists=True,
+                        is_pkg=is_pkg,
+                        file=rel,
+                        source=open(path, 'r').read()
+                    )
+                    return
+        self.write_msg(
+            'imp',
+            mod=mod,
+            exists=False,
+            is_pkg=False,
+            file=None,
+            source=''
+        )
 
     def _pump(self, for_id):
         """Pump messages until the given ID is received.
@@ -82,7 +115,11 @@ class Tunnel:
         """
         while True:
             obj = self.read_msg()
-            if obj['req_id'] == for_id:
+            if 'tb' in obj:
+                raise IOError('Error from remote host:\n\n' + obj['tb'])
+            if 'imp' in obj:
+                self.handle_imp(obj['imp'])
+            elif 'ret' in obj and obj['req_id'] == for_id:
                 return obj['ret']
             # TODO: dispatch requests for imports etc
 
@@ -94,6 +131,14 @@ class Tunnel:
 
         """
         id = self._next_id()
-        msg = (id, callable, args, kwargs)
-        self.write_msg(msg)
+        params = (callable, args, kwargs)
+        self.write_msg(
+            'call',
+            req_id=id,
+            params=base64.b64encode(pickle.dumps(params))
+        )
         return self._pump(id)
+
+    def __del__(self):
+        self.write_msg('end')
+        self.proc.wait()
