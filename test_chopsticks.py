@@ -1,8 +1,14 @@
 from __future__ import print_function
-from chopsticks.tunnel import Tunnel
+from chopsticks.tunnel import Tunnel, Local
 from chopsticks.facts import ip
 import time
 
-t = Tunnel('byzantium')
-print('Time on byzantium:', t.call(time.time))
-print('byzantium ip:', t.call(ip))
+hosts = [
+    Tunnel('byzantium'),
+    Tunnel('office.popeconsulting.co.uk'),
+    Local()
+]
+for t in hosts:
+    print('Time on %s:' % t.host, t.call(time.time))
+    print('%s ip:' % t.host, t.call(ip))
+    print()
