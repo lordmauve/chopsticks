@@ -1,3 +1,4 @@
+from __future__ import print_function
 import subprocess
 import sys
 import os
@@ -8,7 +9,13 @@ import struct
 import pkgutil
 import base64
 
+from .ioloop import IOLoop
+
 __metaclass__ = type
+
+
+# One global loop for all tunnels
+loop = IOLoop()
 
 
 class BaseTunnel:
@@ -22,17 +29,16 @@ class BaseTunnel:
 
     def __init__(self):
         self.req_id = 0
+        self.callbacks = {}
         self.connect()
 
     def connect(self):
         """Connect the tunnel."""
         raise NotImplementedError('Subclasses must implement connect()')
 
-    def write_msg(self, op, **kwargs):
+    def write_msg(self, msg):
+        """Write a JSON message to the tunnel."""
         raise NotImplementedError('Subclasses must implement write_msg()')
-
-    def read_msg(self):
-        raise NotImplementedError('Subclasses must implement read_msg()')
 
     def _next_id(self):
         self.req_id += 1
@@ -66,21 +72,22 @@ class BaseTunnel:
             source=''
         )
 
-    def _pump(self, for_id):
+    def on_message(self, msg):
         """Pump messages until the given ID is received.
 
         The current thread will be blocked until the response is received.
 
         """
-        while True:
-            obj = self.read_msg()
-            if 'tb' in obj:
-                raise IOError('Error from remote host:\n\n' + obj['tb'])
-            if 'imp' in obj:
-                self.handle_imp(obj['imp'])
-            elif 'ret' in obj and obj['req_id'] == for_id:
-                return obj['ret']
-            # TODO: dispatch requests for imports etc
+        if 'tb' in msg:
+            raise IOError('Error from remote host:\n\n' + msg['tb'])
+        if 'imp' in msg:
+            self.handle_imp(msg['imp'])
+        elif 'ret' in msg:
+            id = msg['req_id']
+            if id not in self.callbacks:
+                return
+
+            self.callbacks.pop(id)(msg['ret'])
 
     def call(self, callable, *args, **kwargs):
         """Call the given callable on the remote host.
@@ -89,17 +96,22 @@ class BaseTunnel:
         but there is no such restriction on the parameters.
 
         """
+        self._call_async(loop.stop, callable, *args, **kwargs)
+        return loop.run()
+
+    def _call_async(self, on_result, callable, *args, **kwargs):
         id = self._next_id()
+        self.callbacks[id] = on_result
         params = (callable, args, kwargs)
         self.write_msg(
             'call',
             req_id=id,
             params=base64.b64encode(pickle.dumps(params))
         )
-        return self._pump(id)
 
     def __del__(self):
         self.write_msg('end')
+        loop.run()
         self.proc.wait()
 
 
@@ -116,6 +128,12 @@ class PipeTunnel(BaseTunnel):
         self.connect_pipes()
         self.wpipe.write(bubble)
         self.wpipe.flush()
+        self.reader = loop.reader(self.rpipe, self.on_message, self.on_error)
+        self.writer = loop.writer(self.wpipe)
+
+    def on_error(self, err):
+        print(str(err), file=sys.stderr)
+        loop.stop()
 
     def write_msg(self, op, **kwargs):
         """Write one message to the subprocess.
@@ -124,22 +142,7 @@ class PipeTunnel(BaseTunnel):
 
         """
         kwargs['op'] = op
-        buf = json.dumps(kwargs)
-        self.wpipe.write(struct.pack('!L', len(buf)))
-        self.wpipe.write(buf)
-
-    def read_msg(self):
-        """Read one message from the subprocess.
-
-        This decodes the stream using a chunked JSON protocol, which can be
-        parsed without a security risk to the local host.
-
-        """
-        buf = self.rpipe.read(4)
-        if not buf:
-            raise IOError('Invalid message from remote.')
-        (size,) = struct.unpack('!L', buf)
-        return json.loads(self.rpipe.read(size))
+        self.writer.write(kwargs)
 
 
 class SubprocessTunnel(PipeTunnel):

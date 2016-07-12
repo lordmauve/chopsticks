@@ -1,3 +1,4 @@
+"""Exercise chopsticks serial APIs."""
 from __future__ import print_function
 from chopsticks.tunnel import Tunnel, Local
 from chopsticks.facts import ip
@@ -5,7 +6,7 @@ import time
 
 hosts = [
     Tunnel('byzantium'),
-    Tunnel('office.popeconsulting.co.uk'),
+    Tunnel('office'),
     Local()
 ]
 for t in hosts:

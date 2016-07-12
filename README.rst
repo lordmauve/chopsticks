@@ -39,12 +39,21 @@ capabilities; currently only ``chopsticks.facts.ip`` is a thing::
 API
 ---
 
+Chopsticks should be used from a single thread; the following APIs are not
+re-entrant.
 
-``class Tunnel(host, user=None)``
+
+``chopsticks.tunnel.Tunnel(host, user=None)``
 
     Construct an SSH Tunnel to connect to the given host. If ``user`` is given,
     connect as this user; otherwise connect as the default user (from SSH
     configs or the currently logged in user).
+
+``chopsticks.tunnel.Local()``
+
+    Construct a local tunnel, connected to a subprocess on the controller host.
+
+    This could be used for testing.
 
 ``tunnel.call(callable, *args, **kwargs)``
 
@@ -54,6 +63,20 @@ API
     However, the function must return a value that is JSON-serializable. This
     constraint arises for security reasons, to ensure that any highjacking of
     the remote process cannot be used to compromise the controller machine.
+
+``chopsticks.group.Group(hosts)``
+
+    Construct a group of hosts; ``hosts`` may be a list of strings or a list
+    of Tunnel objects.
+
+``group.call(callable, *args, **kwargs)``
+
+    Call the given callable on all hosts in the group.
+
+    The return value is a dictionary of return values, keyed by host name (the
+    host name passed to the ``Group``/``Tunnel`` constructor).
+
+    The result key for a ``Local`` tunnel will be ``localhost``.
 
 
 How it works
