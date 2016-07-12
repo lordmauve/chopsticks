@@ -36,8 +36,8 @@ capabilities; currently only ``chopsticks.facts.ip`` is a thing::
 
     print('%s ip:' % t.host, t.call(ip))
 
-Calling conventions
--------------------
+API
+---
 
 
 ``class Tunnel(host, user=None)``
@@ -63,19 +63,22 @@ The SSH tunnel invokes the ``python`` binary on the remote host, and feeds it a
 bootstrap script via stdin.
 
 Once bootstrapped, the remote "agent" sets up bi-directional communication over
-stdin/stdout (stderr is currently not consumed and can therefore be used to
-feed debugging information back to the controlling terminal). This
-communication is used (currently) for two purposes:
+the stdin/stdout of the tunnel (stderr is currently not consumed and can
+therefore be used to feed debugging information back to the controlling
+terminal). This communication is used (currently) for two purposes:
 
-* An RPC system to invoke arbitrary callables within the remote agent and feed
-  back information to the controller.
+* An RPC system to invoke arbitrary callables within the remote agent and pass
+  the returned values back to the controller.
 * A PEP-302 import hook system, allowing the remote agent to import pure-Python
   code from the controller (NB. the controller can only serve Python modules
   that live within the filesystem - import hooks such as zipimport/compressed
   eggs are not currently supported).
 
+stdin/stdout on the agent are redirected to ``/dev/null``.
 
 License
 -------
 
-GPLv3
+`Apache License 2.0`__
+
+.. __: http://www.apache.org/licenses/LICENSE-2.0
