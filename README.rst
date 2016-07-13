@@ -49,6 +49,13 @@ capabilities; currently only ``chopsticks.facts.ip`` is a thing::
     for host, addr in group.call(ip).iteritems():
         print('%s ip:' % host, addr)
 
+Installation
+------------
+
+Chopsticks can be used directly from a clone of the repo; or installed with pip::
+
+    $ pip install chopsticks
+
 API
 ---
 
