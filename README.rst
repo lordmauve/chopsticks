@@ -22,19 +22,32 @@ host to be executed.
 First stand up an SSH Tunnel::
 
     from chopsticks.tunnel import Tunnel
-    tun = Tunnel('troy')
+    tun = Tunnel('troy.example.com')
 
 Then you can pass a function, to be called on the remote host::
 
     import time
-    print('Time on %s:' % t.host, t.call(time.time))
+    print('Time on %s:' % tun.host, tun.call(time.time))
 
 The intention would be to build in some useful facts and config management
 capabilities; currently only ``chopsticks.facts.ip`` is a thing::
 
     from chopsticks.facts import ip
 
-    print('%s ip:' % t.host, t.call(ip))
+    print('%s ip:' % tun.host, tun.call(ip))
+
+``Tunnel`` provides support for executing on a single host; there is also a
+``Group`` that can execute a callable on a number of hosts in parallel::
+
+    from chopsticks.group import Group
+    
+    group = Group([
+        'web1.example.com',
+        'web2.example.com',
+        'web3.example.com',
+    ])
+    for host, addr in group.call(ip).iteritems():
+        print('%s ip:' % host, addr)
 
 API
 ---
