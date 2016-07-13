@@ -60,6 +60,8 @@ Chopsticks can be used directly from a clone of the repo; or installed with pip:
 
     $ pip install chopsticks
 
+Chopsticks requires only Python 2 (see below for `why not Python 3 <whypy2>`_).
+
 API
 ---
 
@@ -102,7 +104,6 @@ re-entrant.
 
     The result key for a ``Local`` tunnel will be ``localhost``.
 
-
 How it works
 ------------
 
@@ -122,6 +123,18 @@ terminal). This communication is used (currently) for two purposes:
   eggs are not currently supported).
 
 stdin/stdout on the agent are redirected to ``/dev/null``.
+
+.. _whypy2:
+
+OMG Python 2 wtf??!
+-------------------
+
+At the time of writing deployed Linux servers, and out of the box Linux
+distributions are more likely to have Python 2 than Python 3. Therefore this
+was the initial target.
+
+Python 3 support needs to happen, though there will be problems to solve
+around how to bootstrap the remote agents (six is not an option here).
 
 License
 -------
