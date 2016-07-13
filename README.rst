@@ -13,6 +13,10 @@ functions that can be called from the orchestration host. No invoking bash
 commands (eg. Fabric) or writing self-contained scripts with constrained input
 and output formats (eg. Ansible).
 
+One might also draw a comparison with Python's built-in ``multiprocessing``
+library, but instead of calling code in subprocesses on the same host, the
+code may be run on remote hosts.
+
 Example
 -------
 
