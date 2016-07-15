@@ -8,6 +8,7 @@ import time
 group = Group([
     Local('worker-1'),
     Local('worker-2'),
+    'byzantium'
 ])
 for host, t in group.call(time.time).items():
     print('Time on %s:' % host, t)
