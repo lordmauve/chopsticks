@@ -1,6 +1,9 @@
-from .tunnel import SSHTunnel, loop
+from .tunnel import SSHTunnel, loop, PY2
 
 __metaclass__ = type
+
+if not PY2:
+    basestring = str
 
 
 class Group:

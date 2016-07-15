@@ -1,8 +1,9 @@
+from __future__ import print_function
 import sys
 sys.path = [p for p in sys.path if p.startswith('/usr')]
 
 def debug(msg):
-    print >>sys.stderr, msg
+    print(msg, file=sys.stderr)
 
 # Reshuffle fds so that we can't break our transport by printing to stdout
 import os
@@ -15,9 +16,29 @@ sys.stdin = open(os.devnull, 'rb')
 sys.stdout.close()
 sys.stdout = open(os.devnull, 'wb')
 
+PY2 = sys.version_info < (3,)
+PY3 = not PY2
 import threading
-from Queue import Queue
-import cPickle as pickle
+if PY2:
+    __metaclass__ = type
+    from Queue import Queue
+    import cPickle as pickle
+
+    def exec_(_code_, _globs_=None, _locs_=None):
+        """Execute code in a namespace."""
+        if _globs_ is None:
+            frame = sys._getframe(1)
+            _globs_ = frame.f_globals
+            if _locs_ is None:
+                _locs_ = frame.f_locals
+            del frame
+        elif _locs_ is None:
+            _locs_ = _globs_
+        exec("""exec _code_ in _globs_, _locs_""")
+else:
+    from queue import Queue
+    import pickle
+    exec_ = getattr(__builtins__, 'exec')
 import json
 import struct
 import imp
@@ -29,12 +50,11 @@ done = object()
 
 running = True
 
-
-
 Imp = namedtuple('Imp', 'exists is_pkg file source')
 PREFIX = 'controller://'
 
-class Loader(object):
+
+class Loader:
     cache = {}
     ev = threading.Event()
 
@@ -71,11 +91,11 @@ class Loader(object):
             mod.__package__ = fullname
         else:
             mod.__package__ = fullname.rpartition('.')[0]
-        exec compile(m.source, mod.__file__, 'exec') in mod.__dict__
+        exec(compile(m.source, mod.__file__, 'exec'), mod.__dict__)
         return mod
 
     def is_package(self, fullname):
-        return self.get(fullname).is_package
+        return self.get(fullname).is_pkg
 
     def get_source(self, fullname):
         return self.get(fullname).source
@@ -112,22 +132,25 @@ def handle_imp(mod, exists, is_pkg, file, source):
     Loader.ev.set()
 
 
-
 def read_msg():
     buf = inpipe.read(4)
     if not buf:
-        return {'op': 'end'}
+        return
     (size,) = struct.unpack('!L', buf)
-    return json.loads(inpipe.read(size))
+    chunk = inpipe.read(size)
+    if PY3:
+        chunk = chunk.decode('ascii')
+    return json.loads(chunk)
 
 
 def reader():
+    pid = os.getpid()
     try:
         while True:
             obj = read_msg()
-            op = obj.pop('op')
-            if op == 'end':
+            if not obj:
                 return
+            op = obj.pop('op')
             handler = globals()['handle_' + op]
             handler(**obj)
     finally:
@@ -141,6 +164,8 @@ def writer():
             break
         # pickle is unsafe for the return transport
         buf = json.dumps(msg)
+        if PY3:
+            buf = buf.encode('ascii')
         outpipe.write(struct.pack('!L', len(buf)))
         outpipe.write(buf)
 

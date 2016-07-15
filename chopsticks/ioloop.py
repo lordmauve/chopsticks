@@ -1,9 +1,12 @@
+import sys
 import os
 import fcntl
 import json
 import struct
 from select import select
 __metaclass__ = type
+
+PY2 = sys.version_info < (3,)
 
 
 def nonblocking_fd(fd):
@@ -20,11 +23,9 @@ class MessageReader:
         self.fd = nonblocking_fd(fd)
         self.callback = on_message
         self.errback = errback
-        self.buf = ''
+        self.buf = b''
         self.need = 4
         self.msgsize = None
-        self.running = True
-        self.loop.want_read(self.fd, self.on_data)
 
     def on_data(self):
         chunk = os.read(self.fd, max(1, self.need - len(self.buf)))
@@ -46,6 +47,8 @@ class MessageReader:
             else:
                 self.msgsize = None
                 self.need = 4
+                if not PY2:
+                    chunk = chunk.decode('ascii')
                 try:
                     decoded = json.loads(chunk)
                 except ValueError as e:
@@ -53,6 +56,10 @@ class MessageReader:
                     return
                 else:
                     self.callback(decoded)
+
+    def start(self):
+        self.running = True
+        self.loop.want_read(self.fd, self.on_data)
 
     def stop(self):
         self.running = False
@@ -66,7 +73,7 @@ class MessageWriter:
         self.queue = []
 
     def write(self, msg):
-        data = json.dumps(msg)
+        data = json.dumps(msg).encode('ascii')
         self.queue.append(struct.pack('!L', len(data)) + data)
         self.loop.want_write(self.fd, self.on_write)
 
@@ -100,15 +107,13 @@ class IOLoop:
     def want_read(self, fd, callback):
         self.read[fd] = callback
 
-    def abort_read(self, pipe):
+    def abort_read(self, fd):
         self.read.pop(fd, None)
 
     def step(self):
-        rs, ws, xs = select(
-            self.read.keys(),
-            self.write.keys(),
-            self.read.keys() + self.write.keys()
-        )
+        rfds = list(self.read)
+        wfds = list(self.write)
+        rs, ws, xs = select(rfds, wfds, rfds + wfds)
         for r in rs:
             self.read.pop(r)()
         for w in ws:

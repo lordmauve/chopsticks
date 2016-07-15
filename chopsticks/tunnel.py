@@ -3,11 +3,16 @@ import subprocess
 import sys
 import os
 import os.path
-import cPickle as pickle
 import json
 import struct
 import pkgutil
 import base64
+PY2 = sys.version_info < (3,)
+
+if PY2:
+    import cPickle as pickle
+else:
+    import pickle
 
 from .ioloop import IOLoop
 
@@ -88,6 +93,7 @@ class BaseTunnel:
                 return
 
             self.callbacks.pop(id)(msg['ret'])
+            self.reader.stop()
 
     def call(self, callable, *args, **kwargs):
         """Call the given callable on the remote host.
@@ -103,16 +109,12 @@ class BaseTunnel:
         id = self._next_id()
         self.callbacks[id] = on_result
         params = (callable, args, kwargs)
+        self.reader.start()
         self.write_msg(
             'call',
             req_id=id,
-            params=base64.b64encode(pickle.dumps(params))
+            params=base64.b64encode(pickle.dumps(params, -1)).decode('ascii')
         )
-
-    def __del__(self):
-        self.write_msg('end')
-        loop.run()
-        self.proc.wait()
 
 
 class PipeTunnel(BaseTunnel):
@@ -150,29 +152,36 @@ class SubprocessTunnel(PipeTunnel):
     def connect_pipes(self):
         self.proc = subprocess.Popen(
             self.cmd_args(),
+            bufsize=0,
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,
-            shell=False
+            shell=False,
+            preexec_fn=os.setpgrp
         )
         self.wpipe = self.proc.stdin
         self.rpipe = self.proc.stdout
 
     def cmd_args(self):
         bubble_bytes = len(self.get_bubble())
+        python = '/usr/bin/python2' if PY2 else '/usr/bin/python3'
         return [
             '/usr/bin/env',
             '-i',
-            '/usr/bin/python',
+            python,
             '-usS',
             '-c',
-            'import sys; __bubble = sys.stdin.read(%d); exec(compile(__bubble, \'bubble.py\', \'exec\'))' % bubble_bytes
+            'import sys, os; sys.stdin = os.fdopen(0, \'rb\', 0); __bubble = sys.stdin.read(%d); exec(compile(__bubble, \'bubble.py\', \'exec\'))' % bubble_bytes
         ]
+
+    def __del__(self):
+        self.wpipe.close()  # Terminate child
+        self.proc.wait()
 
 
 class Local(SubprocessTunnel):
     """A tunnel to a subprocess on the same host."""
-    def __init__(self):
-        self.host = 'localhost'
+    def __init__(self, name='localhost'):
+        self.host = name
         super(Local, self).__init__()
 
 

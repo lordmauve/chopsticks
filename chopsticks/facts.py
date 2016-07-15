@@ -1,5 +1,6 @@
 import re
-from helpers import output_lines
+import sys
+from .helpers import output_lines
 
 
 def routes():
@@ -25,3 +26,9 @@ def ip():
         if ws[2] == 'inet':
             return re.sub(r'/\d+$', '', ws[3])
     return None
+
+
+def python_version():
+    """Get the Python version."""
+    return list(sys.version_info)
+
