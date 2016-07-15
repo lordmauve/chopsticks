@@ -13,6 +13,10 @@ functions that can be called from the orchestration host. No invoking bash
 commands (eg. Fabric) or writing self-contained scripts with constrained input
 and output formats (eg. Ansible).
 
+One might also draw a comparison with Python's built-in ``multiprocessing``
+library, but instead of calling code in subprocesses on the same host, the
+code may be run on remote hosts.
+
 Example
 -------
 
@@ -22,19 +26,41 @@ host to be executed.
 First stand up an SSH Tunnel::
 
     from chopsticks.tunnel import Tunnel
-    tun = Tunnel('troy')
+    tun = Tunnel('troy.example.com')
 
 Then you can pass a function, to be called on the remote host::
 
     import time
-    print('Time on %s:' % t.host, t.call(time.time))
+    print('Time on %s:' % tun.host, tun.call(time.time))
 
 The intention would be to build in some useful facts and config management
 capabilities; currently only ``chopsticks.facts.ip`` is a thing::
 
     from chopsticks.facts import ip
 
-    print('%s ip:' % t.host, t.call(ip))
+    print('%s ip:' % tun.host, tun.call(ip))
+
+``Tunnel`` provides support for executing on a single host; there is also a
+``Group`` that can execute a callable on a number of hosts in parallel::
+
+    from chopsticks.group import Group
+    
+    group = Group([
+        'web1.example.com',
+        'web2.example.com',
+        'web3.example.com',
+    ])
+    for host, addr in group.call(ip).iteritems():
+        print('%s ip:' % host, addr)
+
+Installation
+------------
+
+Chopsticks can be used directly from a clone of the repo; or installed with pip::
+
+    $ pip install chopsticks
+
+Chopsticks requires only Python 2 (see below for `why not Python 3 <whypy2>`_).
 
 API
 ---
@@ -78,7 +104,6 @@ re-entrant.
 
     The result key for a ``Local`` tunnel will be ``localhost``.
 
-
 How it works
 ------------
 
@@ -98,6 +123,18 @@ terminal). This communication is used (currently) for two purposes:
   eggs are not currently supported).
 
 stdin/stdout on the agent are redirected to ``/dev/null``.
+
+.. _whypy2:
+
+OMG Python 2 wtf??!
+-------------------
+
+At the time of writing deployed Linux servers, and out of the box Linux
+distributions are more likely to have Python 2 than Python 3. Therefore this
+was the initial target.
+
+Python 3 support needs to happen, though there will be problems to solve
+around how to bootstrap the remote agents (six is not an option here).
 
 License
 -------
