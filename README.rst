@@ -75,6 +75,16 @@ re-entrant.
     connect as this user; otherwise connect as the default user (from SSH
     configs or the currently logged in user).
 
+``chopsticks.tunnel.Docker(name, [image], rm=True)``
+
+    Construct a tunnel to a python process Docker container.
+
+    If ``image`` is given, it is the Docker image to launch. If not given then
+    it will be a default image for the current Python version.
+
+    If ``rm`` is True, the container will be destroyed when the tunnel exits.
+
+
 ``chopsticks.tunnel.Local()``
 
     Construct a local tunnel, connected to a subprocess on the controller host.

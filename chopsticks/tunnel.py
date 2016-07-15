@@ -165,8 +165,6 @@ class SubprocessTunnel(PipeTunnel):
         bubble_bytes = len(self.get_bubble())
         python = '/usr/bin/python2' if PY2 else '/usr/bin/python3'
         return [
-            '/usr/bin/env',
-            '-i',
             python,
             '-usS',
             '-c',
@@ -183,6 +181,35 @@ class Local(SubprocessTunnel):
     def __init__(self, name='localhost'):
         self.host = name
         super(Local, self).__init__()
+
+
+class Docker(SubprocessTunnel):
+    """A tunnel connected to a throwaway Docker container."""
+
+    pyver = '{0}.{1}'.format(*sys.version_info)
+
+    def __init__(self, name, image='python:' + pyver, rm=True):
+        self.host = name
+        self.image = image
+        self.rm = rm
+        super(Docker, self).__init__()
+
+    def cmd_args(self):
+        base = super(Docker, self).cmd_args()
+        bootstrap = base[-2:]
+        args =[]
+        if self.rm:
+            args.append('--rm')
+
+        python = 'python' if PY2 else 'python3'
+        return [
+            'docker',
+            'run',
+            '-i',
+            '--name',
+            self.host,
+        ] + args + [self.image, python, '-usS',] + bootstrap
+
 
 
 class SSHTunnel(SubprocessTunnel):
