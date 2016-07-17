@@ -5,7 +5,7 @@ Chopsticks is an orchestration library: it lets you manage and configure
 remote hosts over SSH.
 
 Naturally this is agentless and nothing needs to be installed on the remote
-host.
+host except Python and an SSH agent.
 
 It's perhaps best compared to Ansible or Fabric, but has some clever transport
 magic which means it's very easy to develop with: you just write Python
@@ -50,7 +50,7 @@ capabilities; currently only ``chopsticks.facts.ip`` is a thing::
         'web2.example.com',
         'web3.example.com',
     ])
-    for host, addr in group.call(ip).iteritems():
+    for host, addr in group.call(ip).items():
         print('%s ip:' % host, addr)
 
 Installation
@@ -146,7 +146,8 @@ terminal). This communication is used (currently) for two purposes:
   that live within the filesystem - import hooks such as zipimport/compressed
   eggs are not currently supported).
 
-stdin/stdout on the agent are redirected to ``/dev/null``.
+stdin/stdout on the agent are redirected to ``/dev/null``, so calling
+``print()`` on the remote machine will not break the tunnel.
 
 License
 -------
