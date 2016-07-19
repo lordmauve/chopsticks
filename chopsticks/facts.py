@@ -32,3 +32,7 @@ def python_version():
     """Get the Python version."""
     return list(sys.version_info)
 
+
+def python_executable():
+    """Get the path to the Python interpreter."""
+    return sys.executable

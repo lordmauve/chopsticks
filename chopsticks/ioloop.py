@@ -30,7 +30,7 @@ class MessageReader:
     def on_data(self):
         chunk = os.read(self.fd, max(1, self.need - len(self.buf)))
         if not chunk:
-            self.errback(IOError('Unexpected EOF on stream'))
+            self.errback('Unexpected EOF on stream')
             return
         self.buf += chunk
         self.loop.want_read(self.fd, self.on_data)
@@ -52,7 +52,7 @@ class MessageReader:
                 try:
                     decoded = json.loads(chunk)
                 except ValueError as e:
-                    self.errback(e)
+                    self.errback(e.args[0])
                     return
                 else:
                     self.callback(decoded)
@@ -80,7 +80,10 @@ class MessageWriter:
     def on_write(self):
         if not self.queue:
             return
-        written = os.write(self.fd, self.queue[0])
+        try:
+            written = os.write(self.fd, self.queue[0])
+        except OSError:
+            return
         b = self.queue[0] = self.queue[0][written:]
         if not b:
             self.queue.pop(0)

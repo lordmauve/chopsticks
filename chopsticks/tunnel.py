@@ -22,16 +22,30 @@ __metaclass__ = type
 # One global loop for all tunnels
 loop = IOLoop()
 
+bubble = pkgutil.get_data('chopsticks', 'bubble.py')
+
+
+class ErrorResult:
+    """Indicates an error returned by the remote host.
+
+    Because tracebacks or error types cannot be represented across hosts this
+    will simply consist of a message.
+
+    """
+    def __init__(self, msg, tb=None):
+        self.msg = msg
+        if tb:
+            self.msg += '\n\n' + tb
+
+    def __repr__(self):
+        return 'ErrorResult(%r)' % self.msg
+
+
+    __str__ = __repr__
+    __unicode__ = __repr__
+
 
 class BaseTunnel:
-    bubble = None
-
-    @classmethod
-    def get_bubble(cls):
-        if cls.bubble is None:
-            cls.bubble = pkgutil.get_data('chopsticks', 'bubble.py')
-        return cls.bubble
-
     def __init__(self):
         self.req_id = 0
         self.callbacks = {}
@@ -84,7 +98,9 @@ class BaseTunnel:
 
         """
         if 'tb' in msg:
-            raise IOError('Error from remote host:\n\n' + msg['tb'])
+            id = msg['req_id']
+            error = ErrorResult('RPC call failed', msg['tb'])
+            self.callbacks.pop(id)(error)
         if 'imp' in msg:
             self.handle_imp(msg['imp'])
         elif 'ret' in msg:
@@ -126,7 +142,6 @@ class PipeTunnel(BaseTunnel):
     """
 
     def connect(self):
-        bubble = self.get_bubble()
         self.connect_pipes()
         self.wpipe.write(bubble)
         self.wpipe.flush()
@@ -134,8 +149,9 @@ class PipeTunnel(BaseTunnel):
         self.writer = loop.writer(self.wpipe)
 
     def on_error(self, err):
-        print(str(err), file=sys.stderr)
-        loop.stop()
+        err = ErrorResult(err)
+        for id in list(self.callbacks):
+            self.callbacks.pop(id)(err)
 
     def write_msg(self, op, **kwargs):
         """Write one message to the subprocess.
@@ -149,6 +165,20 @@ class PipeTunnel(BaseTunnel):
 
 class SubprocessTunnel(PipeTunnel):
     """A tunnel that connects to a subprocess."""
+
+    #: These arguments are used for bootstrapping Python into out remote agent
+    PYTHON_ARGS = [
+        '-usS',
+        '-c',
+        'import sys, os; sys.stdin = os.fdopen(0, \'rb\', 0); ' +
+        '__bubble = sys.stdin.read(%d); ' % len(bubble) +
+        'exec(compile(__bubble, \'bubble.py\', \'exec\'))'
+    ]
+
+    # Paths to the Python 2/3 binary on the remote host
+    python2 = '/usr/bin/python2'
+    python3 = '/usr/bin/python3'
+
     def connect_pipes(self):
         self.proc = subprocess.Popen(
             self.cmd_args(),
@@ -162,14 +192,8 @@ class SubprocessTunnel(PipeTunnel):
         self.rpipe = self.proc.stdout
 
     def cmd_args(self):
-        bubble_bytes = len(self.get_bubble())
-        python = '/usr/bin/python2' if PY2 else '/usr/bin/python3'
-        return [
-            python,
-            '-usS',
-            '-c',
-            'import sys, os; sys.stdin = os.fdopen(0, \'rb\', 0); __bubble = sys.stdin.read(%d); exec(compile(__bubble, \'bubble.py\', \'exec\'))' % bubble_bytes
-        ]
+        python = self.python2 if PY2 else self.python3
+        return [python] + self.PYTHON_ARGS
 
     def __del__(self):
         self.wpipe.close()  # Terminate child
@@ -186,6 +210,11 @@ class Local(SubprocessTunnel):
 class Docker(SubprocessTunnel):
     """A tunnel connected to a throwaway Docker container."""
 
+    #: For the standard Python docker images, Python is not installed as
+    #: /usr/bin/python[23]
+    python2 = 'python'
+    python3 = 'python3'
+
     pyver = '{0}.{1}'.format(*sys.version_info)
 
     def __init__(self, name, image='python:' + pyver, rm=True):
@@ -196,19 +225,17 @@ class Docker(SubprocessTunnel):
 
     def cmd_args(self):
         base = super(Docker, self).cmd_args()
-        bootstrap = base[-2:]
         args =[]
         if self.rm:
             args.append('--rm')
 
-        python = 'python' if PY2 else 'python3'
         return [
             'docker',
             'run',
             '-i',
             '--name',
             self.host,
-        ] + args + [self.image, python, '-usS',] + bootstrap
+        ] + args + [self.image] + base
 
 
 
