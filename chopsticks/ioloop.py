@@ -1,3 +1,4 @@
+from __future__ import print_function
 import sys
 import os
 import fcntl
@@ -12,7 +13,7 @@ PY2 = sys.version_info < (3,)
 def nonblocking_fd(fd):
     if hasattr(fd, 'fileno'):
         fd = fd.fileno()
-    #fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
+    fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
     return fd
 
 
@@ -91,6 +92,48 @@ class MessageWriter:
             self.loop.want_write(self.fd, self.on_write)
 
 
+class StderrReader:
+    """Echo stderr to the console, prefixed by hostname."""
+    def __init__(self, ioloop, fd, host):
+        self.loop = ioloop
+        self.fd = nonblocking_fd(fd)
+        self.host = host
+        self.buf = ''
+        self.loop.want_read(self.fd, self.on_data)
+
+    def on_data(self):
+        chunk = os.read(self.fd, 512)
+        if not chunk:
+            if self.buf:
+                self.println(self.buf)
+                self.buf = ''
+            return
+        self.buf += chunk
+        self.loop.want_read(self.fd, self.on_data)
+        self._check()
+
+    def println(self, l):
+        if sys.stderr.isatty():
+            fmt = '\x1b[31m[{host}]\x1b[0m {l}'
+        else:
+            fmt = '[{host}] {l}'
+        msg = fmt.format(host=self.host, l=l)
+        print(msg, file=sys.stderr)
+
+    def _check(self):
+        if '\n' in self.buf:
+            lines = self.buf.split('\n')
+            self.buf = lines.pop()
+            for l in lines:
+                self.println(l)
+
+    def stop(self):
+        self.loop.abort_read(self.fd)
+
+    def __del__(self):
+        self.stop()
+
+
 class IOLoop:
     """An IO loop allowing the servicing of multiple tunnels with one thread.
 
@@ -103,20 +146,38 @@ class IOLoop:
         self.write = {}
         self.err = {}
         self.result = None
+        self.running = False
+        self.breakr, self.breakw = os.pipe()
 
     def want_write(self, fd, callback):
         self.write[fd] = callback
+        self.break_select()
 
     def want_read(self, fd, callback):
         self.read[fd] = callback
+        self.break_select()
 
     def abort_read(self, fd):
         self.read.pop(fd, None)
+        self.break_select()
+
+    def break_select(self):
+        """Cause the select.select() to break to pick up new fds.
+
+        This is done by including a pipe in the fds passed to select, to which
+        we can write. Writing to this pipe will cause select to return early.
+        The bytes written are discarded.
+
+        """
+        os.write(self.breakw, 'x')
 
     def step(self):
-        rfds = list(self.read)
+        rfds = list(self.read) + [self.breakr]
         wfds = list(self.write)
         rs, ws, xs = select(rfds, wfds, rfds + wfds)
+        if self.breakr in rs:
+            rs.remove(self.breakr)
+            os.read(self.breakr, 512)
         for r in rs:
             self.read.pop(r)()
         for w in ws:

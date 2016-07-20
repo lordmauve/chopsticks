@@ -7,6 +7,8 @@ import json
 import struct
 import pkgutil
 import base64
+import threading
+
 PY2 = sys.version_info < (3,)
 
 if PY2:
@@ -14,7 +16,7 @@ if PY2:
 else:
     import pickle
 
-from .ioloop import IOLoop
+from .ioloop import IOLoop, StderrReader
 
 __metaclass__ = type
 
@@ -22,7 +24,18 @@ __metaclass__ = type
 # One global loop for all tunnels
 loop = IOLoop()
 
+# Another thread will output stderr
+errloop = IOLoop()
+
 bubble = pkgutil.get_data('chopsticks', 'bubble.py')
+
+
+def start_errloop():
+    if errloop.running:  # FIXME: race condition - may be stopping
+        return
+    t = threading.Thread(target=errloop.run)
+    t.setDaemon(True)
+    t.start()
 
 
 class ErrorResult:
@@ -148,6 +161,9 @@ class PipeTunnel(BaseTunnel):
         self.reader = loop.reader(self.rpipe, self.on_message, self.on_error)
         self.writer = loop.writer(self.wpipe)
 
+        self.errreader = StderrReader(errloop, self.epipe, self.host)
+        start_errloop()
+
     def on_error(self, err):
         err = ErrorResult(err)
         for id in list(self.callbacks):
@@ -185,11 +201,13 @@ class SubprocessTunnel(PipeTunnel):
             bufsize=0,
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             shell=False,
             preexec_fn=os.setpgrp
         )
         self.wpipe = self.proc.stdin
         self.rpipe = self.proc.stdout
+        self.epipe = self.proc.stderr
 
     def cmd_args(self):
         python = self.python2 if PY2 else self.python3
