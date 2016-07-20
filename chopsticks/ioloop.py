@@ -98,21 +98,21 @@ class StderrReader:
         self.loop = ioloop
         self.fd = nonblocking_fd(fd)
         self.host = host
-        self.buf = ''
+        self.buf = b''
         self.loop.want_read(self.fd, self.on_data)
 
     def on_data(self):
         chunk = os.read(self.fd, 512)
         if not chunk:
-            if self.buf:
-                self.println(self.buf)
-                self.buf = ''
+            self._flush()
             return
         self.buf += chunk
         self.loop.want_read(self.fd, self.on_data)
         self._check()
 
     def println(self, l):
+        if not PY2:
+            l = l.decode('utf8')
         if sys.stderr.isatty():
             fmt = '\x1b[31m[{host}]\x1b[0m {l}'
         else:
@@ -121,14 +121,21 @@ class StderrReader:
         print(msg, file=sys.stderr)
 
     def _check(self):
-        if '\n' in self.buf:
-            lines = self.buf.split('\n')
+        if b'\n' in self.buf:
+            lines = self.buf.split(b'\n')
             self.buf = lines.pop()
             for l in lines:
                 self.println(l)
 
+    def _flush(self):
+        """Flush the buffer."""
+        if self.buf:
+            self.println(self.buf)
+            self.buf = b''
+
     def stop(self):
         self.loop.abort_read(self.fd)
+        self._flush()
 
     def __del__(self):
         self.stop()
@@ -169,7 +176,7 @@ class IOLoop:
         The bytes written are discarded.
 
         """
-        os.write(self.breakw, 'x')
+        os.write(self.breakw, b'x')
 
     def step(self):
         rfds = list(self.read) + [self.breakr]
