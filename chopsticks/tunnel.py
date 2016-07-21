@@ -114,8 +114,10 @@ class BaseTunnel:
             id = msg['req_id']
             error = ErrorResult('RPC call failed', msg['tb'])
             self.callbacks.pop(id)(error)
-        if 'imp' in msg:
+        elif 'imp' in msg:
             self.handle_imp(msg['imp'])
+        elif 'read' in msg:
+            self.handle_read(msg['read'])
         elif 'ret' in msg:
             id = msg['req_id']
             if id not in self.callbacks:

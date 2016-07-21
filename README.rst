@@ -146,8 +146,9 @@ terminal). This communication is used (currently) for two purposes:
   that live within the filesystem - import hooks such as zipimport/compressed
   eggs are not currently supported).
 
-stdin/stdout on the agent are redirected to ``/dev/null``, so calling
-``print()`` on the remote machine will not break the tunnel.
+``stderr`` is echoed to the controlling console, prefixed with a hostname to
+identify which Tunnel it issued from. This can therefore be used to feed
+debugging information back to the orchestration host.
 
 License
 -------

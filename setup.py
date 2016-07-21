@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='chopsticks',
@@ -9,7 +9,7 @@ setup(
     author='Daniel Pope',
     author_email='mauve@mauveweb.co.uk',
     url='https://github.com/lordmauve/chopsticks',
-    packages=['chopsticks'],
+    packages=find_packages(),
     zip_safe=False,
     classifiers=[
         'Development Status :: 4 - Beta',

@@ -9,6 +9,9 @@ __metaclass__ = type
 
 PY2 = sys.version_info < (3,)
 
+if PY2:
+    bytes = str
+
 
 def nonblocking_fd(fd):
     if hasattr(fd, 'fileno'):
@@ -72,11 +75,25 @@ class MessageWriter:
         self.loop = ioloop
         self.fd = nonblocking_fd(fd)
         self.queue = []
+        self.iter = None
+        self.chunk = b''
+
+    def _encode(self, msg):
+        """Encode the given message."""
+        data = json.dumps(msg).encode('ascii')
+        return struct.pack('!L', len(data)) + data
 
     def write(self, msg):
-        data = json.dumps(msg).encode('ascii')
-        self.queue.append(struct.pack('!L', len(data)) + data)
+        self.queue.append(msg)
         self.loop.want_write(self.fd, self.on_write)
+
+    def write_iter(self, iterable):
+        """Write messages from an iterable to the stream.
+
+        Each message must be JSON-serializable.
+
+        """
+        self.queue.append(iterable)
 
     def on_write(self):
         if not self.queue:
@@ -88,8 +105,21 @@ class MessageWriter:
         b = self.queue[0] = self.queue[0][written:]
         if not b:
             self.queue.pop(0)
-        if self.queue:
-            self.loop.want_write(self.fd, self.on_write)
+            while True:  # may have to loop through empty iterables
+                if self.iter:
+                    try:
+                        msg = next(self.iter)
+                    except StopIteration:
+                        self.iter = None
+                    else:
+                        self.queue.insert(0, self._encode(msg))
+                        break
+                if not self.queue:
+                    return
+                if isinstance(self.queue[0], bytes):
+                    break
+                self.iter = self.queue.pop(0)
+        self.loop.want_write(self.fd, self.on_write)
 
 
 class StderrReader:
