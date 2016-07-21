@@ -84,7 +84,7 @@ class MessageWriter:
         return struct.pack('!L', len(data)) + data
 
     def write(self, msg):
-        self.queue.append(msg)
+        self.queue.append(self._encode(msg))
         self.loop.want_write(self.fd, self.on_write)
 
     def write_iter(self, iterable):

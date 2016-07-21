@@ -35,9 +35,9 @@ class GroupResult(dict):
                 yield host, res
 
     def __repr__(self):
-        return '%s(%r)' % (
+        return '%s(%s)' % (
             self.__class__.__name__,
-            self
+            super(GroupResult, self).__repr__()
         )
 
 
