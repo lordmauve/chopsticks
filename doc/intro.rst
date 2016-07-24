@@ -59,7 +59,8 @@ The SSH tunnel invokes the ``python`` binary on the remote host, and feeds it a
 bootstrap script via stdin.
 
 Once bootstrapped, the remote "agent" sets up bi-directional communication over
-the stdin/stdout of the tunnel. This communication is used (currently) for two purposes:
+the stdin/stdout of the tunnel. This communication is used (currently) for two
+purposes:
 
 * An RPC system to invoke arbitrary callables within the remote agent and pass
   the returned values back to the controller.
