@@ -7,6 +7,8 @@ remote hosts over SSH.
 Naturally this is agentless and nothing needs to be installed on the remote
 host except Python and an SSH agent.
 
+It also has support for executing code in Docker containers.
+
 It's perhaps best compared to Ansible or Fabric, but has some clever transport
 magic which means it's very easy to develop with: you just write Python
 functions that can be called from the orchestration host. No invoking bash
@@ -33,12 +35,9 @@ Then you can pass a function, to be called on the remote host::
     import time
     print('Time on %s:' % tun.host, tun.call(time.time))
 
-The intention would be to build in some useful facts and config management
-capabilities; currently only ``chopsticks.facts.ip`` is a thing::
-
-    from chopsticks.facts import ip
-
-    print('%s ip:' % tun.host, tun.call(ip))
+You can use any pure-Python function in the current codebase, meaning you can
+create your own libraries of orchestration functions to call on remote hosts
+(as well as functions that call out to remote hosts using Chopsticks).
 
 ``Tunnel`` provides support for executing on a single host; there is also a
 ``Group`` that can execute a callable on a number of hosts in parallel::
@@ -50,8 +49,25 @@ capabilities; currently only ``chopsticks.facts.ip`` is a thing::
         'web2.example.com',
         'web3.example.com',
     ])
-    for host, addr in group.call(ip).items():
+    for host, addr in group.call(ip).successful():
         print('%s ip:' % host, addr)
+
+Subclasses of tunnels allow connecting without SSH, such as to fresh Docker
+containers::
+
+    from chopsticks.tunnel import Docker
+    from chopsticks.group import Group
+    from chopsticks.facts import python_version
+
+    group = Group([
+        Docker('worker-1', image='python:3.4'),
+        Docker('worker-2', image='python:3.5'),
+        Docker('worker-3', image='python:3.6'),
+    ])
+
+    for host, python_version in group.call(python_version).items():
+        print('%s Python version:' % host, python_version)
+
 
 Installation
 ------------
@@ -65,54 +81,9 @@ pip::
 API
 ---
 
-Chopsticks should be used from a single thread; the following APIs are not
-re-entrant.
+See `the full documentation`__ on Read The Docs.
 
-
-``chopsticks.tunnel.Tunnel(host, user=None)``
-
-    Construct an SSH Tunnel to connect to the given host. If ``user`` is given,
-    connect as this user; otherwise connect as the default user (from SSH
-    configs or the currently logged in user).
-
-``chopsticks.tunnel.Docker(name, [image], rm=True)``
-
-    Construct a tunnel to a python process Docker container.
-
-    If ``image`` is given, it is the Docker image to launch. If not given then
-    it will be a default image for the current Python version.
-
-    If ``rm`` is True, the container will be destroyed when the tunnel exits.
-
-
-``chopsticks.tunnel.Local()``
-
-    Construct a local tunnel, connected to a subprocess on the controller host.
-
-    This could be used for testing.
-
-``tunnel.call(callable, *args, **kwargs)``
-
-    Call the given callable on the remote host with the given arguments.
-
-    Any pickleable function can be called with any pickleable arguments.
-    However, the function must return a value that is JSON-serializable. This
-    constraint arises for security reasons, to ensure that any highjacking of
-    the remote process cannot be used to compromise the controller machine.
-
-``chopsticks.group.Group(hosts)``
-
-    Construct a group of hosts; ``hosts`` may be a list of strings or a list
-    of Tunnel objects.
-
-``group.call(callable, *args, **kwargs)``
-
-    Call the given callable on all hosts in the group.
-
-    The return value is a dictionary of return values, keyed by host name (the
-    host name passed to the ``Group``/``Tunnel`` constructor).
-
-    The result key for a ``Local`` tunnel will be ``localhost``.
+.. __: https://chopsticks.readthedocs.io/
 
 
 Python 2/3

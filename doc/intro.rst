@@ -14,6 +14,12 @@ Then you can pass a function, to be called on the remote host::
     import time
     print('Time on %s:' % tun.host, tun.call(time.time))
 
+You can use any pure-Python function in the current codebase, meaning you can
+create your own libraries of orchestration functions to call on remote hosts
+(as well as functions that call out to remote hosts using Chopsticks).
+Naturally those functions can import pure-Python libraries and so on. Your
+entire local codebase should just work remotely.
+
 ``Group`` allows for executing a callable on a number of hosts in parallel::
 
     from chopsticks.group import Group
