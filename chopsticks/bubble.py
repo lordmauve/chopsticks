@@ -1,6 +1,7 @@
 from __future__ import print_function
 import sys
-sys.path = [p for p in sys.path if p.startswith('/usr')]
+sys.path = [p for p in sys.path if p.startswith('/')]
+
 
 def debug(msg):
     print(msg, file=sys.stderr)
@@ -128,7 +129,7 @@ def handle_call_thread(req_id, params):
 
 
 def handle_imp(mod, exists, is_pkg, file, source):
-    d = Loader.cache[mod] = Imp(exists, is_pkg, file, source)
+    Loader.cache[mod] = Imp(exists, is_pkg, file, source)
     Loader.ev.set()
 
 
@@ -144,7 +145,6 @@ def read_msg():
 
 
 def reader():
-    pid = os.getpid()
     try:
         while True:
             obj = read_msg()
@@ -152,6 +152,8 @@ def reader():
                 return
             op = obj.pop('op')
             handler = globals()['handle_' + op]
+            if PY2:
+                obj = dict((str(k), v) for k, v in obj.iteritems())
             handler(**obj)
     finally:
         outqueue.put(done)
