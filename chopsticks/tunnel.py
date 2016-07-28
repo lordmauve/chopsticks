@@ -3,11 +3,10 @@ import subprocess
 import sys
 import os
 import os.path
-import json
-import struct
 import pkgutil
 import base64
 import threading
+from .ioloop import IOLoop, StderrReader
 
 PY2 = sys.version_info < (3,)
 
@@ -16,7 +15,6 @@ if PY2:
 else:
     import pickle
 
-from .ioloop import IOLoop, StderrReader
 
 __metaclass__ = type
 
@@ -48,14 +46,17 @@ class ErrorResult:
     def __init__(self, msg, tb=None):
         self.msg = msg
         if tb:
-            self.msg += '\n\n' + tb
+            self.msg += '\n\n    ' + '\n    '.join(tb.splitlines())
 
     def __repr__(self):
         return 'ErrorResult(%r)' % self.msg
 
-
     __str__ = __repr__
     __unicode__ = __repr__
+
+
+class RemoteException(Exception):
+    """An exception from the remote agent."""
 
 
 class BaseTunnel:
@@ -112,7 +113,10 @@ class BaseTunnel:
         """
         if 'tb' in msg:
             id = msg['req_id']
-            error = ErrorResult('RPC call failed', msg['tb'])
+            error = ErrorResult(
+                'Host %r raised exception; traceback follows' % self.host,
+                msg['tb']
+            )
             self.callbacks.pop(id)(error)
         elif 'imp' in msg:
             self.handle_imp(msg['imp'])
@@ -134,7 +138,10 @@ class BaseTunnel:
 
         """
         self._call_async(loop.stop, callable, *args, **kwargs)
-        return loop.run()
+        ret = loop.run()
+        if isinstance(ret, ErrorResult):
+            raise RemoteException(ret.msg)
+        return ret
 
     def _call_async(self, on_result, callable, *args, **kwargs):
         id = self._next_id()
@@ -245,7 +252,7 @@ class Docker(SubprocessTunnel):
 
     def cmd_args(self):
         base = super(Docker, self).cmd_args()
-        args =[]
+        args = []
         if self.rm:
             args.append('--rm')
 
@@ -256,7 +263,6 @@ class Docker(SubprocessTunnel):
             '--name',
             self.host,
         ] + args + [self.image] + base
-
 
 
 class SSHTunnel(SubprocessTunnel):
