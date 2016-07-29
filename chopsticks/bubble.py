@@ -45,8 +45,11 @@ import struct
 import imp
 import base64
 from collections import namedtuple
+import signal
+from hashlib import sha1
 
-outqueue = Queue()
+outqueue = Queue(maxsize=10)
+tasks = Queue()
 done = object()
 
 running = True
@@ -107,12 +110,41 @@ sys.path_hooks.append(Loader)
 
 
 def handle_call(req_id, params):
-    threading.Thread(target=handle_call_thread, args=(req_id, params)).start()
-
-
-def handle_call_thread(req_id, params):
+    """Pass a request to the main thread."""
     try:
         callable, args, kwargs = pickle.loads(base64.b64decode(params))
+    except:
+        ret = callable(*args, **kwargs)
+    else:
+        tasks.put((req_id, callable, args, kwargs))
+
+
+def handle_fetch(req_id, path):
+    """Fetch a file by path."""
+    tasks.put((req_id, do_fetch, (req_id, path,)))
+
+
+def do_fetch(req_id, path):
+    """Send chunks of a file to the orchestration host."""
+    h = sha1()
+    with open(path, 'rb') as f:
+        while True:
+            chunk = f.read(10240)
+            if not chunk:
+                break
+            h.update(chunk)
+            outqueue.put({
+                'req_id': req_id,
+                'data': base64.b64encode(chunk)
+            })
+    return {
+        'remote_path': os.path.abspath(path),
+        'sha1sum': h.hexdigest(),
+    }
+
+
+def do_call(req_id, callable, args=(), kwargs={}):
+    try:
         ret = callable(*args, **kwargs)
     except:
         import traceback
@@ -157,6 +189,11 @@ def reader():
             handler(**obj)
     finally:
         outqueue.put(done)
+        tasks.put(done)
+        # SIGINT will raise KeyboardInterrupt in the main (ie. task) thread
+        # TODO: Perhaps give this some timeout, in case operations can complete
+        # successfully?
+        os.kill(os.getpid(), signal.SIGINT)
 
 
 def writer():
@@ -174,3 +211,10 @@ def writer():
 
 for func in (reader, writer):
     threading.Thread(target=func).start()
+
+
+while True:
+    task = tasks.get()
+    if task is done:
+        break
+    do_call(*task)

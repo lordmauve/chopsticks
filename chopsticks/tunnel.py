@@ -6,6 +6,8 @@ import os.path
 import pkgutil
 import base64
 import threading
+import tempfile
+from hashlib import sha1
 from .ioloop import IOLoop, StderrReader
 
 PY2 = sys.version_info < (3,)
@@ -120,15 +122,20 @@ class BaseTunnel:
             self.callbacks.pop(id)(error)
         elif 'imp' in msg:
             self.handle_imp(msg['imp'])
-        elif 'read' in msg:
-            self.handle_read(msg['read'])
         elif 'ret' in msg:
             id = msg['req_id']
             if id not in self.callbacks:
+                # TODO: warn
                 return
 
             self.callbacks.pop(id)(msg['ret'])
             self.reader.stop()
+        elif 'data' in msg:
+            id = msg['req_id']
+            if id not in self.callbacks:
+                # TODO: warn
+                return
+            self.callbacks[id].recv(msg['data'])
 
     def call(self, callable, *args, **kwargs):
         """Call the given callable on the remote host.
@@ -153,6 +160,69 @@ class BaseTunnel:
             req_id=id,
             params=base64.b64encode(pickle.dumps(params, -1)).decode('ascii')
         )
+
+    def fetch(self, remote_path, local_path=None):
+        """Fetch one file from the remote host.
+
+        If local_path is given, it is the local path to write to. Otherwise,
+        a temporary filename will be used.
+
+        The return value is a dict containing:
+
+        * ``local_path`` - the local path written to
+        * ``remote_path`` - the absolute remote path
+        * ``size`` - the number of bytes received
+        * ``sha1sum`` - a sha1 checksum of the file data
+
+        """
+        self._fetch_async(loop.stop, remote_path, local_path)
+        ret = loop.run()
+        if isinstance(ret, ErrorResult):
+            raise RemoteException(ret.msg)
+        return ret
+
+    def _fetch_async(self, on_result, remote_path, local_path=None):
+        id = self._next_id()
+        fetch = Fetch(on_result, local_path)
+        self.callbacks[id] = fetch
+        self.reader.start()
+        self.write_msg(
+            'fetch',
+            req_id=id,
+            path=remote_path,
+        )
+
+
+class Fetch(object):
+    def __init__(self, on_result, local_path=None):
+        self.on_result = on_result
+        if local_path:
+            self.local_path = local_path
+            self.file = open(local_path, 'wb')
+        else:
+            self.file = tempfile.NamedTemporaryFile('wb', delete=False)
+            self.local_path = self.file.name
+        self.size = 0
+        self.chksum = sha1()
+
+    def recv(self, data):
+        data = base64.b64decode(data)
+        self.chksum.update(data)
+        self.file.write(data)
+        self.size += len(data)
+
+    def __call__(self, result):
+        self.file.close()
+        if not isinstance(result, ErrorResult):
+            remote_chksum = result['sha1sum']
+            if remote_chksum != self.chksum.hexdigest():
+                result = ErrorResult('Fetch failed due to checksum mismatch')
+            else:
+                result['local_path'] = self.local_path
+
+        if isinstance(result, ErrorResult):
+            os.unlink(self.local_path)
+        self.on_result(result)
 
 
 class PipeTunnel(BaseTunnel):
