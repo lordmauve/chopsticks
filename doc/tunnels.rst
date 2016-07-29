@@ -16,6 +16,8 @@ SSH
 
     .. automethod:: call
 
+    .. automethod:: fetch
+
 .. autoclass:: Tunnel
 
 
