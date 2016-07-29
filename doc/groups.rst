@@ -11,7 +11,7 @@ Group API
 .. currentmodule:: chopsticks.group
 
 .. autoclass:: Group
-    :members: __init__, call
+    :members: __init__, call, fetch
 
 
 Results

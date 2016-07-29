@@ -133,9 +133,12 @@ def do_fetch(req_id, path):
             if not chunk:
                 break
             h.update(chunk)
+            data = base64.b64encode(chunk)
+            if not PY2:
+                data = data.decode('ascii')
             outqueue.put({
                 'req_id': req_id,
-                'data': base64.b64encode(chunk)
+                'data': data
             })
     return {
         'remote_path': os.path.abspath(path),

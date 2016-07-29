@@ -86,3 +86,42 @@ class Group:
         for t in tunnels:
             t._call_async(self._callback(t.host), callable, *args, **kwargs)
         return loop.run()
+
+    def fetch(self, remote_path, local_path=None):
+        """Fetch files from all remote hosts.
+
+        If `local_path` is given, it is a local path template, into which
+        the tunnel's ``host`` name will be substituted using ``str.format()``.
+        Hostnames generated in this way must be unique.
+
+        For example::
+
+            group.fetch('/etc/passwd', local_path='passwd-{host}')
+
+        If `local_path` is not given, a temporary file will be used for
+        each host.
+
+        Returns a :class:`GroupResult` of dicts, each containing:
+
+        * ``local_path`` - the local path written to
+        * ``remote_path`` - the absolute remote path
+        * ``size`` - the number of bytes received
+        * ``sha1sum`` - a sha1 checksum of the file data
+
+        """
+        tunnels = self.tunnels[:]
+        if local_path is not None:
+            names = [local_path.format(host=t.host) for t in tunnels]
+            if len(set(names)) != len(tunnels):
+                raise ValueError(
+                    'local_path template %s does not give unique paths' %
+                    local_path
+                )
+        else:
+            names = [None] * len(tunnels)
+
+        self.waiting = len(tunnels)
+        self.results = {}
+        for tun, local_path in zip(tunnels, names):
+            tun._fetch_async(self._callback(tun.host), remote_path, local_path)
+        return loop.run()
