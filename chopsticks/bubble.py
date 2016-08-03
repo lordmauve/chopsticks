@@ -49,7 +49,8 @@ import signal
 from hashlib import sha1
 import traceback
 
-outqueue = Queue()
+outqueue = Queue(maxsize=10)
+tasks = Queue()
 done = object()
 
 running = True
@@ -60,20 +61,33 @@ PREFIX = 'controller://'
 
 class Loader:
     cache = {}
-    ev = threading.Event()
+    lock = threading.RLock()
+    ev = threading.Condition(lock)
 
     def __init__(self, path):
         if not path.startswith(PREFIX):
             raise ImportError()
         self.path = path
 
+    @classmethod
+    def on_receive(cls, mod, imp):
+        with cls.lock:
+            cls.cache[mod] = imp
+            cls.ev.notifyAll()
+
     def get(self, fullname):
-        if fullname in self.cache:
-            return self.cache[fullname]
-        self.ev.clear()
-        outqueue.put({'imp': fullname})
-        self.ev.wait()
-        imp = self.cache[fullname]
+        with self.lock:
+            if fullname in self.cache:
+                return self.cache[fullname]
+            outqueue.put({'imp': fullname})
+            while True:
+                self.ev.wait()
+                try:
+                    imp = self.cache[fullname]
+                except KeyError:
+                    continue
+                else:
+                    break
         if not imp.exists:
             raise ImportError()
         return imp
@@ -121,26 +135,25 @@ def transmit_errors(func):
     return wrapper
 
 
-def handle_call(req_id, params):
+@transmit_errors
+def handle_call_threaded(req_id, params):
     threading.Thread(target=handle_call_thread, args=(req_id, params)).start()
 
 
+@transmit_errors
 def handle_call_thread(req_id, params):
-    try:
-        callable, args, kwargs = pickle.loads(base64.b64decode(params))
-        ret = callable(*args, **kwargs)
-    except:
-        import traceback
-        msg = {
-            'req_id': req_id,
-            'tb': traceback.format_exc()
-        }
-    else:
-        msg = {
-            'req_id': req_id,
-            'ret': ret,
-        }
-    outqueue.put(msg)
+    callable, args, kwargs = pickle.loads(base64.b64decode(params))
+    do_call(req_id, callable, args, kwargs)
+
+
+@transmit_errors
+def handle_call_queued(req_id, params):
+    callable, args, kwargs = pickle.loads(base64.b64decode(params))
+    tasks.put((req_id, callable, args, kwargs))
+
+
+# FIXME: handle_call_queued seems to deadlock!
+handle_call = handle_call_threaded
 
 @transmit_errors
 def handle_fetch(req_id, path):
@@ -180,8 +193,7 @@ def do_call(req_id, callable, args=(), kwargs={}):
 
 
 def handle_imp(mod, exists, is_pkg, file, source):
-    Loader.cache[mod] = Imp(exists, is_pkg, file, source)
-    Loader.ev.set()
+    Loader.on_receive(mod, Imp(exists, is_pkg, file, source))
 
 
 active_puts = {}
@@ -274,6 +286,7 @@ def reader():
             handler(**obj)
     finally:
         outqueue.put(done)
+        tasks.put(done)
 
 
 def writer():
@@ -291,3 +304,10 @@ def writer():
 
 for func in (reader, writer):
     threading.Thread(target=func).start()
+
+
+while True:
+    task = tasks.get()
+    if task is done:
+        break
+    do_call(*task)
