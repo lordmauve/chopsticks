@@ -71,9 +71,14 @@ class BaseTunnel:
         """Connect the tunnel."""
         raise NotImplementedError('Subclasses must implement connect()')
 
-    def write_msg(self, msg):
-        """Write a JSON message to the tunnel."""
-        raise NotImplementedError('Subclasses must implement write_msg()')
+    def write_msg(self, op, **kwargs):
+        """Write one message to the subprocess.
+
+        This uses a chunked JSON protocol.
+
+        """
+        kwargs['op'] = op
+        self.writer.write(kwargs)
 
     def _next_id(self):
         self.req_id += 1
@@ -85,19 +90,23 @@ class BaseTunnel:
             (True, os.path.join(stem, '__init__.py')),
             (False, stem + '.py'),
         ]
-        for root in sys.path:
-            for is_pkg, rel in paths:
-                path = os.path.join(root, rel)
-                if os.path.exists(path):
-                    self.write_msg(
-                        'imp',
-                        mod=mod,
-                        exists=True,
-                        is_pkg=is_pkg,
-                        file=rel,
-                        source=open(path, 'r').read()
-                    )
-                    return
+
+        try:
+            for root in sys.path:
+                for is_pkg, rel in paths:
+                    path = os.path.join(root, rel)
+                    if os.path.exists(path):
+                        self.write_msg(
+                            'imp',
+                            mod=mod,
+                            exists=True,
+                            is_pkg=is_pkg,
+                            file=rel,
+                            source=open(path, 'r').read()
+                        )
+                        return
+        except:
+            pass
         self.write_msg(
             'imp',
             mod=mod,
@@ -125,7 +134,7 @@ class BaseTunnel:
         elif 'ret' in msg:
             id = msg['req_id']
             if id not in self.callbacks:
-                # TODO: warn
+                self._warn('response received for unknown req_id %d' % id)
                 return
 
             self.callbacks.pop(id)(msg['ret'])
@@ -133,9 +142,14 @@ class BaseTunnel:
         elif 'data' in msg:
             id = msg['req_id']
             if id not in self.callbacks:
-                # TODO: warn
+                self._warn('response received for unknown req_id %d' % id)
                 return
             self.callbacks[id].recv(msg['data'])
+        else:
+            self._warn('malformed message received: %r' % msg)
+
+    def _warn(self, msg):
+        print('%s:' % self.host, msg, file=sys.stderr)
 
     def call(self, callable, *args, **kwargs):
         """Call the given callable on the remote host.
@@ -167,6 +181,9 @@ class BaseTunnel:
         If local_path is given, it is the local path to write to. Otherwise,
         a temporary filename will be used.
 
+        This operation supports arbitarily large files (file data is streamed,
+        not buffered in memory).
+
         The return value is a dict containing:
 
         * ``local_path`` - the local path written to
@@ -191,6 +208,75 @@ class BaseTunnel:
             req_id=id,
             path=remote_path,
         )
+
+    def put(self, local_path, remote_path=None, mode=0o644):
+        """Copy a file to the remote host.
+
+        If remote_path is given, it is the remote path to write to. Otherwise,
+        a temporary filename will be used.
+
+        This operation supports arbitarily large files (file data is streamed,
+        not buffered in memory).
+
+        The return value is a dict containing:
+
+        * ``remote_path`` - the absolute remote path
+        * ``size`` - the number of bytes received
+        * ``sha1sum`` - a sha1 checksum of the file data
+
+        """
+        self._put_async(loop.stop, local_path, remote_path, mode)
+        ret = loop.run()
+        if isinstance(ret, ErrorResult):
+            raise RemoteException(ret.msg)
+        return ret
+
+    def _put_async(
+            self,
+            on_result,
+            local_path,
+            remote_path=None,
+            mode=0o644):
+        id = self._next_id()
+        self.callbacks[id] = on_result
+        self.reader.start()
+        self.write_msg(
+            'begin_put',
+            req_id=id,
+            path=remote_path,
+            mode=mode
+        )
+        self.writer.write_iter(
+            iter_chunks(id, local_path)
+        )
+
+
+def iter_chunks(req_id, path):
+    """Iterate over chunks of the given file.
+
+    Yields message suitable for writing to a stream.
+
+    """
+    chksum = sha1()
+    with open(path, 'rb') as f:
+        while True:
+            chunk = f.read(10240)
+            if not chunk:
+                yield {
+                    'op': 'end_put',
+                    'req_id': req_id,
+                    'sha1sum': chksum.hexdigest()
+                }
+                break
+            chksum.update(chunk)
+            data = base64.b64encode(chunk)
+            if not PY2:
+                data = data.decode('ascii')
+            yield {
+                'op': 'put_data',
+                'req_id': req_id,
+                'data': data
+            }
 
 
 class Fetch(object):
@@ -247,15 +333,6 @@ class PipeTunnel(BaseTunnel):
         err = ErrorResult(err)
         for id in list(self.callbacks):
             self.callbacks.pop(id)(err)
-
-    def write_msg(self, op, **kwargs):
-        """Write one message to the subprocess.
-
-        This uses a chunked JSON protocol.
-
-        """
-        kwargs['op'] = op
-        self.writer.write(kwargs)
 
 
 class SubprocessTunnel(PipeTunnel):

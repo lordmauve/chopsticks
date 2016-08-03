@@ -94,6 +94,7 @@ class MessageWriter:
 
         """
         self.queue.append(iterable)
+        self.loop.want_write(self.fd, self.on_write)
 
     def on_write(self):
         if not self.queue:
@@ -101,6 +102,9 @@ class MessageWriter:
         try:
             written = os.write(self.fd, self.queue[0])
         except OSError:
+            # TODO: handle errors properly
+            import traceback
+            traceback.print_exc()
             return
         b = self.queue[0] = self.queue[0][written:]
         if not b:

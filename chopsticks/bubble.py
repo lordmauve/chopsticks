@@ -47,9 +47,9 @@ import base64
 from collections import namedtuple
 import signal
 from hashlib import sha1
+import traceback
 
-outqueue = Queue(maxsize=10)
-tasks = Queue()
+outqueue = Queue()
 done = object()
 
 running = True
@@ -109,16 +109,40 @@ sys.path.append(PREFIX)
 sys.path_hooks.append(Loader)
 
 
+def transmit_errors(func):
+    def wrapper(req_id, *args, **kwargs):
+        try:
+            return func(req_id, *args, **kwargs)
+        except:
+            outqueue.put({
+                'req_id': req_id,
+                'tb': traceback.format_exc()
+            })
+    return wrapper
+
+
 def handle_call(req_id, params):
-    """Pass a request to the main thread."""
+    threading.Thread(target=handle_call_thread, args=(req_id, params)).start()
+
+
+def handle_call_thread(req_id, params):
     try:
         callable, args, kwargs = pickle.loads(base64.b64decode(params))
-    except:
         ret = callable(*args, **kwargs)
+    except:
+        import traceback
+        msg = {
+            'req_id': req_id,
+            'tb': traceback.format_exc()
+        }
     else:
-        tasks.put((req_id, callable, args, kwargs))
+        msg = {
+            'req_id': req_id,
+            'ret': ret,
+        }
+    outqueue.put(msg)
 
-
+@transmit_errors
 def handle_fetch(req_id, path):
     """Fetch a file by path."""
     tasks.put((req_id, do_fetch, (req_id, path,)))
@@ -146,26 +170,84 @@ def do_fetch(req_id, path):
     }
 
 
+@transmit_errors
 def do_call(req_id, callable, args=(), kwargs={}):
-    try:
-        ret = callable(*args, **kwargs)
-    except:
-        import traceback
-        msg = {
-            'req_id': req_id,
-            'tb': traceback.format_exc()
-        }
-    else:
-        msg = {
-            'req_id': req_id,
-            'ret': ret,
-        }
-    outqueue.put(msg)
+    ret = callable(*args, **kwargs)
+    outqueue.put({
+        'req_id': req_id,
+        'ret': ret,
+    })
 
 
 def handle_imp(mod, exists, is_pkg, file, source):
     Loader.cache[mod] = Imp(exists, is_pkg, file, source)
     Loader.ev.set()
+
+
+active_puts = {}
+
+
+@transmit_errors
+def handle_begin_put(req_id, path, mode):
+    prev_umask = os.umask(0o077)
+    try:
+        if path is None:
+            import tempfile
+            f = tempfile.NamedTemporaryFile(delete=False)
+            path = wpath = f.name
+        else:
+            if os.path.isdir(path):
+                raise IOError('%s is a directory' % path)
+            wpath = path + '~chopsticks-tmp'
+            f = open(wpath, 'wb')
+    finally:
+        os.umask(prev_umask)
+    os.fchmod(f.fileno(), mode)
+    active_puts[req_id] = (f, wpath, path, sha1())
+
+
+@transmit_errors
+def handle_put_data(req_id, data):
+    f, wpath, path, cksum = active_puts[req_id]
+    try:
+        data = base64.b64decode(data)
+        cksum.update(data)
+        f.write(data)
+    except:
+        try:
+            os.unlink(wpath)
+            f.close()
+        except OSError:
+            pass
+        raise
+
+
+class ChecksumMismatch(Exception):
+    pass
+
+
+@transmit_errors
+def handle_end_put(req_id, sha1sum):
+    f, wpath, path, cksum = active_puts.pop(req_id)
+    received = f.tell()
+    f.close()
+    digest = cksum.hexdigest()
+    if digest != sha1sum:
+        try:
+            os.unlink(wpath)
+        except OSError:
+            pass
+        raise ChecksumMismatch('Checksum failed for transfer %s' % path)
+    if wpath != path:
+        os.rename(wpath, path)
+    outqueue.put({
+        'req_id': req_id,
+        'ret': {
+            'remote_path': os.path.abspath(path),
+            'sha1sum': digest,
+            'size': received
+        }
+    })
 
 
 def read_msg():
@@ -192,11 +274,6 @@ def reader():
             handler(**obj)
     finally:
         outqueue.put(done)
-        tasks.put(done)
-        # SIGINT will raise KeyboardInterrupt in the main (ie. task) thread
-        # TODO: Perhaps give this some timeout, in case operations can complete
-        # successfully?
-        os.kill(os.getpid(), signal.SIGINT)
 
 
 def writer():
@@ -214,10 +291,3 @@ def writer():
 
 for func in (reader, writer):
     threading.Thread(target=func).start()
-
-
-while True:
-    task = tasks.get()
-    if task is done:
-        break
-    do_call(*task)
