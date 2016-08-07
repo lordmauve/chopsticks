@@ -68,6 +68,14 @@ class Group:
                 loop.stop(GroupResult(results))
         return cb
 
+    def _parallel(self, tunnels, method, *args, **kwargs):
+        self.waiting = len(tunnels)
+        self.results = {}
+        for t in tunnels:
+            m = getattr(t, method)
+            m(self._callback(t.host), *args, **kwargs)
+        return loop.run()
+
     def call(self, callable, *args, **kwargs):
         """Call the given callable on all hosts in the group.
 
@@ -81,11 +89,7 @@ class Group:
 
         """
         tunnels = self.tunnels[:]
-        self.waiting = len(tunnels)
-        self.results = {}
-        for t in tunnels:
-            t._call_async(self._callback(t.host), callable, *args, **kwargs)
-        return loop.run()
+        return self._parallel(tunnels, '_call_async', callable, *args, **kwargs)
 
     def fetch(self, remote_path, local_path=None):
         """Fetch files from all remote hosts.
@@ -125,3 +129,26 @@ class Group:
         for tun, local_path in zip(tunnels, names):
             tun._fetch_async(self._callback(tun.host), remote_path, local_path)
         return loop.run()
+
+    def put(self, local_path, remote_path=None, mode=0o644):
+        """Copy a file to all remote hosts.
+
+        If remote_path is given, it is the remote path to write to. Otherwise,
+        a temporary filename will be used (which will be different on each
+        host).
+
+        This operation supports arbitarily large files (file data is streamed,
+        not buffered in memory).
+
+        The return value:class:`GroupResult` of dicts, each containing:
+
+        * ``remote_path`` - the absolute remote path
+        * ``size`` - the number of bytes received
+        * ``sha1sum`` - a sha1 checksum of the file data
+
+        """
+        tunnels = self.tunnels[:]
+        return self._parallel(
+            tunnels, '_put_async',
+            local_path, remote_path, mode
+        )
