@@ -212,8 +212,11 @@ class BaseTunnel:
     def put(self, local_path, remote_path=None, mode=0o644):
         """Copy a file to the remote host.
 
-        If remote_path is given, it is the remote path to write to. Otherwise,
-        a temporary filename will be used.
+        If `remote_path` is given, it is the remote path to write to.
+        Otherwise, a temporary filename will be used.
+
+        `mode` gives is the permission bits of the file to create, or 0o644 if
+        unspecified.
 
         This operation supports arbitarily large files (file data is streamed,
         not buffered in memory).

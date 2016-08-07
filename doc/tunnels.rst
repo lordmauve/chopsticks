@@ -13,10 +13,7 @@ SSH
 '''
 
 .. autoclass:: SSHTunnel
-
-    .. automethod:: call
-
-    .. automethod:: fetch
+    :members: call, fetch, put
 
 .. autoclass:: Tunnel
 

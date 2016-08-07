@@ -137,6 +137,9 @@ class Group:
         a temporary filename will be used (which will be different on each
         host).
 
+        `mode` gives the permission bits of the files to create, or 0o644 if
+        unspecified.
+
         This operation supports arbitarily large files (file data is streamed,
         not buffered in memory).
 
