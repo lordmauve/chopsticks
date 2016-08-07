@@ -25,6 +25,7 @@ Contents:
     intro
     tunnels
     groups
+    howto
 
 
 Indices and tables
