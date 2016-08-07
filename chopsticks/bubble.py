@@ -1,6 +1,8 @@
 from __future__ import print_function
 import sys
 sys.path = [p for p in sys.path if p.startswith('/')]
+__name__ = '__bubble__'
+sys.modules[__name__] = sys.modules.pop('__main__')
 
 
 def debug(msg):
@@ -101,15 +103,23 @@ class Loader:
 
     def load_module(self, fullname):
         m = self.get(fullname)
-        mod = sys.modules.setdefault(fullname, imp.new_module(fullname))
+        modname = fullname
+        if fullname == '__main__':
+            # Special-case __main__ so as not to execute
+            # if __name__ == '__main__' blocks
+            modname = '__chopsticks_main__'
+        mod = sys.modules.setdefault(modname, imp.new_module(modname))
         mod.__file__ = PREFIX + m.file
         mod.__loader__ = self
         if m.is_pkg:
             mod.__path__ = [PREFIX + m.file]
-            mod.__package__ = fullname
+            mod.__package__ = modname
         else:
-            mod.__package__ = fullname.rpartition('.')[0]
+            mod.__package__ = modname.rpartition('.')[0]
         exec(compile(m.source, mod.__file__, 'exec'), mod.__dict__)
+        if fullname == '__main__':
+            mod.__name__ == '__main__'
+            sys.modules[fullname] = mod
         return mod
 
     def is_package(self, fullname):

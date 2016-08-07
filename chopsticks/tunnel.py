@@ -27,7 +27,6 @@ loop = IOLoop()
 # Another thread will output stderr
 errloop = IOLoop()
 
-bubble = pkgutil.get_data('chopsticks', 'bubble.py')
 
 
 def start_errloop():
@@ -60,6 +59,8 @@ class ErrorResult:
 class RemoteException(Exception):
     """An exception from the remote agent."""
 
+bubble = pkgutil.get_data('chopsticks', 'bubble.py')
+
 
 class BaseTunnel:
     def __init__(self):
@@ -85,6 +86,20 @@ class BaseTunnel:
         return self.req_id
 
     def handle_imp(self, mod):
+        if mod == '__main__':
+            # Special-case main to find real main module
+            main = sys.modules['__main__']
+            path = main.__file__
+            self.write_msg(
+                'imp',
+                mod=mod,
+                exists=True,
+                is_pkg=False,
+                file=os.path.basename(path),
+                source=open(path, 'r').read()
+            )
+            return
+
         stem = mod.replace('.', os.sep)
         paths = [
             (True, os.path.join(stem, '__init__.py')),
