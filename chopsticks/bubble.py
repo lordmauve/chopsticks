@@ -116,7 +116,8 @@ class Loader:
             mod.__package__ = modname
         else:
             mod.__package__ = modname.rpartition('.')[0]
-        exec(compile(m.source, mod.__file__, 'exec'), mod.__dict__)
+        code = compile(m.source, mod.__file__, 'exec', dont_inherit=True)
+        exec(code, mod.__dict__)
         if fullname == '__main__':
             mod.__name__ == '__main__'
             sys.modules[fullname] = mod
