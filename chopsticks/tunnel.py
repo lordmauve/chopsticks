@@ -323,6 +323,7 @@ class Fetch(object):
                 result = ErrorResult('Fetch failed due to checksum mismatch')
             else:
                 result['local_path'] = self.local_path
+            result['size'] = self.size
 
         if isinstance(result, ErrorResult):
             os.unlink(self.local_path)
@@ -341,7 +342,7 @@ class PipeTunnel(BaseTunnel):
         self.connect_pipes()
         self.wpipe.write(bubble)
         self.wpipe.flush()
-        self.reader = loop.reader(self.rpipe, self.on_message, self.on_error)
+        self.reader = loop.reader(self.rpipe, self)
         self.writer = loop.writer(self.wpipe)
 
         self.errreader = StderrReader(errloop, self.epipe, self.host)

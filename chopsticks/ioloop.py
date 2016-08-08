@@ -4,6 +4,7 @@ import os
 import fcntl
 import json
 import struct
+import weakref
 from select import select
 __metaclass__ = type
 
@@ -22,14 +23,30 @@ def nonblocking_fd(fd):
 
 class MessageReader:
     """Read whole JSON messages from a fd using a chunked protocol."""
-    def __init__(self, ioloop, fd, on_message, errback):
+    def __init__(self, ioloop, fd, tunnel):
         self.loop = ioloop
         self.fd = nonblocking_fd(fd)
-        self.callback = on_message
-        self.errback = errback
+        self.tunnel = weakref.ref(tunnel)
         self.buf = b''
         self.need = 4
         self.msgsize = None
+
+    @property
+    def callback(self):
+        tun = self.tunnel()
+        if tun:
+            return tun.on_message
+        return self._abort
+
+    @property
+    def errback(self):
+        tun = self.tunnel()
+        if tun:
+            return tun.on_error
+        return self._abort
+
+    def _abort(self, *args):
+        self.stop()
 
     def on_data(self):
         chunk = os.read(self.fd, max(1, self.need - len(self.buf)))
