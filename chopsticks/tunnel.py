@@ -4,7 +4,6 @@ import sys
 import os
 import os.path
 import pkgutil
-import base64
 import threading
 import tempfile
 from hashlib import sha1
@@ -26,6 +25,18 @@ loop = IOLoop()
 
 # Another thread will output stderr
 errloop = IOLoop()
+
+
+OP_CALL = 0
+OP_RET = 1
+OP_EXC = 2
+OP_IMP = 3
+OP_FETCH_BEGIN = 4
+OP_FETCH_DATA = 5
+OP_FETCH_END = 6
+OP_PUT_BEGIN = 7
+OP_PUT_DATA = 8
+OP_PUT_END = 9
 
 
 
@@ -72,14 +83,15 @@ class BaseTunnel:
         """Connect the tunnel."""
         raise NotImplementedError('Subclasses must implement connect()')
 
-    def write_msg(self, op, **kwargs):
+    def write_msg(self, op, req_id, data=None, **kwargs):
         """Write one message to the subprocess.
 
         This uses a chunked JSON protocol.
 
         """
-        kwargs['op'] = op
-        self.writer.write(kwargs)
+        if data and kwargs:
+            raise TypeError('Can only send kwargs or data')
+        self.writer.write(op, req_id, data or kwargs)
 
     def _next_id(self):
         self.req_id += 1
@@ -91,7 +103,8 @@ class BaseTunnel:
             main = sys.modules['__main__']
             path = main.__file__
             self.write_msg(
-                'imp',
+                OP_IMP,
+                0,
                 mod=mod,
                 exists=True,
                 is_pkg=False,
@@ -112,7 +125,8 @@ class BaseTunnel:
                     path = os.path.join(root, rel)
                     if os.path.exists(path):
                         self.write_msg(
-                            'imp',
+                            OP_IMP,
+                            0,
                             mod=mod,
                             exists=True,
                             is_pkg=is_pkg,
@@ -123,7 +137,8 @@ class BaseTunnel:
         except:
             pass
         self.write_msg(
-            'imp',
+            OP_IMP,
+            0,
             mod=mod,
             exists=False,
             is_pkg=False,
@@ -137,31 +152,29 @@ class BaseTunnel:
         The current thread will be blocked until the response is received.
 
         """
-        if 'tb' in msg:
-            id = msg['req_id']
+        op, req_id, data = msg
+        if op == OP_EXC:
             error = ErrorResult(
                 'Host %r raised exception; traceback follows' % self.host,
-                msg['tb']
+                data['tb']
             )
-            self.callbacks.pop(id)(error)
-        elif 'imp' in msg:
-            self.handle_imp(msg['imp'])
-        elif 'ret' in msg:
-            id = msg['req_id']
-            if id not in self.callbacks:
-                self._warn('response received for unknown req_id %d' % id)
+            self.callbacks.pop(req_id)(error)
+        elif op == OP_IMP:
+            self.handle_imp(data['imp'])
+        elif op == OP_RET:
+            if req_id not in self.callbacks:
+                self._warn('response received for unknown req_id %d' % req_id)
                 return
 
-            self.callbacks.pop(id)(msg['ret'])
+            self.callbacks.pop(req_id)(data['ret'])
             self.reader.stop()
-        elif 'data' in msg:
-            id = msg['req_id']
-            if id not in self.callbacks:
-                self._warn('response received for unknown req_id %d' % id)
+        elif op == OP_FETCH_DATA:
+            if req_id not in self.callbacks:
+                self._warn('response received for unknown req_id %d' % req_id)
                 return
-            self.callbacks[id].recv(msg['data'])
+            self.callbacks[req_id].recv(data)
         else:
-            self._warn('malformed message received: %r' % msg)
+            self._warn('Unknown opcode received %r' % op)
 
     def _warn(self, msg):
         print('%s:' % self.host, msg, file=sys.stderr)
@@ -185,9 +198,9 @@ class BaseTunnel:
         params = (callable, args, kwargs)
         self.reader.start()
         self.write_msg(
-            'call',
+            OP_CALL,
             req_id=id,
-            params=base64.b64encode(pickle.dumps(params, -1)).decode('ascii')
+            data=pickle.dumps(params, pickle.HIGHEST_PROTOCOL)
         )
 
     def fetch(self, remote_path, local_path=None):
@@ -219,7 +232,7 @@ class BaseTunnel:
         self.callbacks[id] = fetch
         self.reader.start()
         self.write_msg(
-            'fetch',
+            OP_FETCH_BEGIN,
             req_id=id,
             path=remote_path,
         )
@@ -259,8 +272,8 @@ class BaseTunnel:
         self.callbacks[id] = on_result
         self.reader.start()
         self.write_msg(
-            'begin_put',
-            req_id=id,
+            OP_PUT_BEGIN,
+            id,
             path=remote_path,
             mode=mode
         )
@@ -280,21 +293,10 @@ def iter_chunks(req_id, path):
         while True:
             chunk = f.read(10240)
             if not chunk:
-                yield {
-                    'op': 'end_put',
-                    'req_id': req_id,
-                    'sha1sum': chksum.hexdigest()
-                }
+                yield OP_PUT_END, req_id, {'sha1sum': chksum.hexdigest()}
                 break
             chksum.update(chunk)
-            data = base64.b64encode(chunk)
-            if not PY2:
-                data = data.decode('ascii')
-            yield {
-                'op': 'put_data',
-                'req_id': req_id,
-                'data': data
-            }
+            yield OP_PUT_DATA, req_id, chunk
 
 
 class Fetch(object):
@@ -310,7 +312,6 @@ class Fetch(object):
         self.chksum = sha1()
 
     def recv(self, data):
-        data = base64.b64decode(data)
         self.chksum.update(data)
         self.file.write(data)
         self.size += len(data)

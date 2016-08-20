@@ -45,7 +45,6 @@ else:
 import json
 import struct
 import imp
-import base64
 from collections import namedtuple
 import signal
 from hashlib import sha1
@@ -81,7 +80,7 @@ class Loader:
         with self.lock:
             if fullname in self.cache:
                 return self.cache[fullname]
-            outqueue.put({'imp': fullname})
+            send_msg(OP_IMP, 0, {'imp': fullname})
             while True:
                 self.ev.wait()
                 try:
@@ -139,32 +138,42 @@ def transmit_errors(func):
         try:
             return func(req_id, *args, **kwargs)
         except:
-            outqueue.put({
-                'req_id': req_id,
-                'tb': traceback.format_exc()
-            })
+            send_msg(OP_EXC, req_id, {'tb': traceback.format_exc()})
     return wrapper
 
 
 @transmit_errors
-def handle_call_threaded(req_id, params):
-    threading.Thread(target=handle_call_thread, args=(req_id, params)).start()
+def handle_call_threaded(req_id, data):
+    threading.Thread(target=handle_call_thread, args=(req_id, data)).start()
 
 
 @transmit_errors
-def handle_call_thread(req_id, params):
-    callable, args, kwargs = pickle.loads(base64.b64decode(params))
+def handle_call_thread(req_id, data):
+    callable, args, kwargs = pickle.loads(data)
     do_call(req_id, callable, args, kwargs)
 
 
 @transmit_errors
-def handle_call_queued(req_id, params):
-    callable, args, kwargs = pickle.loads(base64.b64decode(params))
+def handle_call_queued(req_id, data):
+    callable, args, kwargs = pickle.loads(data)
     tasks.put((req_id, callable, args, kwargs))
+
+
+OP_CALL = 0
+OP_RET = 1
+OP_EXC = 2
+OP_IMP = 3
+OP_FETCH_BEGIN = 4
+OP_FETCH_DATA = 5
+OP_FETCH_END = 6
+OP_PUT_BEGIN = 7
+OP_PUT_DATA = 8
+OP_PUT_END = 9
 
 
 # FIXME: handle_call_queued seems to deadlock!
 handle_call = handle_call_threaded
+
 
 @transmit_errors
 def handle_fetch(req_id, path):
@@ -181,29 +190,22 @@ def do_fetch(req_id, path):
             if not chunk:
                 break
             h.update(chunk)
-            data = base64.b64encode(chunk)
-            if not PY2:
-                data = data.decode('ascii')
-            outqueue.put({
-                'req_id': req_id,
-                'data': data
-            })
-    return {
-        'remote_path': os.path.abspath(path),
-        'sha1sum': h.hexdigest(),
-    }
+            send_msg(OP_FETCH_DATA, req_id, chunk)
+    send_msg(
+        OP_RET, req_id, {'ret': {
+            'remote_path': os.path.abspath(path),
+            'sha1sum': h.hexdigest(),
+        }}
+    )
 
 
 @transmit_errors
 def do_call(req_id, callable, args=(), kwargs={}):
     ret = callable(*args, **kwargs)
-    outqueue.put({
-        'req_id': req_id,
-        'ret': ret,
-    })
+    send_msg(OP_RET, req_id, {'ret': ret})
 
 
-def handle_imp(mod, exists, is_pkg, file, source):
+def handle_imp(req_id, mod, exists, is_pkg, file, source):
     Loader.on_receive(mod, Imp(exists, is_pkg, file, source))
 
 
@@ -233,7 +235,6 @@ def handle_begin_put(req_id, path, mode):
 def handle_put_data(req_id, data):
     f, wpath, path, cksum = active_puts[req_id]
     try:
-        data = base64.b64decode(data)
         cksum.update(data)
         f.write(data)
     except:
@@ -263,38 +264,71 @@ def handle_end_put(req_id, sha1sum):
         raise ChecksumMismatch('Checksum failed for transfer %s' % path)
     if wpath != path:
         os.rename(wpath, path)
-    outqueue.put({
-        'req_id': req_id,
-        'ret': {
+    send_msg(
+        OP_RET, req_id, {'ret': {
             'remote_path': os.path.abspath(path),
             'sha1sum': digest,
             'size': received
-        }
-    })
+        }}
+    )
+
+
+HEADER = struct.Struct('!LLbb')
+
+MSG_JSON = 0
+MSG_BYTES = 1
+
+
+def send_msg(op, req_id, data):
+    """Send a message to the orchestration host.
+
+    We can send either bytes or JSON-encoded structured data; the opcode will
+    determine which.
+
+    """
+    if isinstance(data, dict):
+        data = json.dumps(data)
+        if not PY2:
+            data = data.encode('ascii')
+        fmt = MSG_JSON
+    else:
+        fmt = MSG_BYTES
+
+    chunk = HEADER.pack(len(data), req_id, op, fmt) + data
+    outqueue.put(chunk)
 
 
 def read_msg():
-    buf = inpipe.read(4)
+    buf = inpipe.read(HEADER.size)
     if not buf:
         return
-    (size,) = struct.unpack('!L', buf)
-    chunk = inpipe.read(size)
-    if PY3:
-        chunk = chunk.decode('ascii')
-    return json.loads(chunk)
+    (size, req_id, op, fmt) = HEADER.unpack(buf)
+    data = inpipe.read(size)
+    if fmt == MSG_JSON:
+        if PY3:
+            data = data.decode('ascii')
+        obj = json.loads(data)
+        if PY2:
+            obj = dict((str(k), v) for k, v in obj.iteritems())
+    else:
+        obj = {'data': data}
+    return (req_id, op, obj)
 
+
+HANDLERS = {
+    OP_CALL: handle_call,
+    OP_IMP: handle_imp,
+    OP_FETCH_BEGIN: handle_fetch,
+    OP_PUT_BEGIN: handle_begin_put,
+    OP_PUT_DATA: handle_put_data,
+    OP_PUT_END: handle_end_put
+}
 
 def reader():
     try:
         while True:
-            obj = read_msg()
-            if not obj:
-                return
-            op = obj.pop('op')
-            handler = globals()['handle_' + op]
-            if PY2:
-                obj = dict((str(k), v) for k, v in obj.iteritems())
-            handler(**obj)
+            req_id, op, params = read_msg()
+            HANDLERS[op](req_id, **params)
     finally:
         outqueue.put(done)
         tasks.put(done)
@@ -305,12 +339,7 @@ def writer():
         msg = outqueue.get()
         if msg is done:
             break
-        # pickle is unsafe for the return transport
-        buf = json.dumps(msg)
-        if PY3:
-            buf = buf.encode('ascii')
-        outpipe.write(struct.pack('!L', len(buf)))
-        outpipe.write(buf)
+        outpipe.write(msg)
 
 
 for func in (reader, writer):

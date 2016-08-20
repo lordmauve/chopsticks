@@ -20,6 +20,11 @@ def nonblocking_fd(fd):
     fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
     return fd
 
+HEADER = struct.Struct('!LLbb')
+
+MSG_JSON = 0
+MSG_BYTES = 1
+
 
 class MessageReader:
     """Read whole JSON messages from a fd using a chunked protocol."""
@@ -28,7 +33,7 @@ class MessageReader:
         self.fd = nonblocking_fd(fd)
         self.tunnel = weakref.ref(tunnel)
         self.buf = b''
-        self.need = 4
+        self.need = HEADER.size
         self.msgsize = None
 
     @property
@@ -63,20 +68,22 @@ class MessageReader:
             chunk = self.buf[:self.need]
             self.buf = self.buf[self.need:]
             if self.msgsize is None:
-                (self.msgsize,) = struct.unpack('!L', chunk)
+                self.msgsize, self.req_id, self.op, self.fmt = HEADER.unpack(chunk)
                 self.need = self.msgsize
             else:
                 self.msgsize = None
-                self.need = 4
-                if not PY2:
-                    chunk = chunk.decode('ascii')
-                try:
-                    decoded = json.loads(chunk)
-                except ValueError as e:
-                    self.errback(e.args[0])
-                    return
+                self.need = HEADER.size
+                if self.fmt == MSG_JSON:
+                    if not PY2:
+                        chunk = chunk.decode('ascii')
+                    try:
+                        data = json.loads(chunk)
+                    except ValueError as e:
+                        self.errback(e.args[0])
+                        return
                 else:
-                    self.callback(decoded)
+                    data = chunk
+                self.callback((self.op, self.req_id, data))
 
     def start(self):
         self.running = True
@@ -95,13 +102,20 @@ class MessageWriter:
         self.iter = None
         self.chunk = b''
 
-    def _encode(self, msg):
+    def _encode(self, op, req_id, data):
         """Encode the given message."""
-        data = json.dumps(msg).encode('ascii')
-        return struct.pack('!L', len(data)) + data
+        if isinstance(data, dict):
+            data = json.dumps(data)
+            if not PY2:
+                data = data.encode('ascii')
+            fmt = MSG_JSON
+        else:
+            fmt = MSG_BYTES
 
-    def write(self, msg):
-        self.queue.append(self._encode(msg))
+        return HEADER.pack(len(data), req_id, op, fmt) + data
+
+    def write(self, op, req_id, data):
+        self.queue.append(self._encode(op, req_id, data))
         self.loop.want_write(self.fd, self.on_write)
 
     def write_iter(self, iterable):
@@ -133,7 +147,7 @@ class MessageWriter:
                     except StopIteration:
                         self.iter = None
                     else:
-                        self.queue.insert(0, self._encode(msg))
+                        self.queue.insert(0, self._encode(*msg))
                         break
                 if not self.queue:
                     return
