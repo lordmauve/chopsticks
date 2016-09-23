@@ -327,7 +327,10 @@ HANDLERS = {
 def reader():
     try:
         while True:
-            req_id, op, params = read_msg()
+            msg = read_msg()
+            if msg is None:
+                break
+            req_id, op, params = msg
             HANDLERS[op](req_id, **params)
     finally:
         outqueue.put(done)
