@@ -1,6 +1,10 @@
 Chopsticks
 ==========
 
+.. image:: https://badges.gitter.im/chopsticks-chat/Lobby.svg
+   :alt: Join the chat at https://gitter.im/chopsticks-chat/Lobby
+   :target: https://gitter.im/chopsticks-chat/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
+
 Chopsticks is an orchestration library: it lets you manage and configure
 remote hosts over SSH.
 
