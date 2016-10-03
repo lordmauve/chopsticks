@@ -42,6 +42,7 @@ else:
     from queue import Queue
     import pickle
     exec_ = getattr(__builtins__, 'exec')
+import time
 import json
 import struct
 import imp
@@ -61,6 +62,11 @@ PREFIX = 'controller://'
 
 
 class Loader:
+    # Imports that don't succeed after this amount of time will time out
+    # This can help crash a remote process when the controller hangs, thus
+    # breaking the deadlock.
+    TIMEOUT = 10  # seconds
+
     cache = {}
     lock = threading.RLock()
     ev = threading.Condition(lock)
@@ -73,6 +79,8 @@ class Loader:
     @classmethod
     def on_receive(cls, mod, imp):
         with cls.lock:
+            if isinstance(mod, list):
+                mod = tuple(mod)
             cls.cache[mod] = imp
             cls.ev.notifyAll()
 
@@ -81,8 +89,13 @@ class Loader:
             if fullname in self.cache:
                 return self.cache[fullname]
             send_msg(OP_IMP, 0, {'imp': fullname})
+            start = time.time()
             while True:
-                self.ev.wait()
+                self.ev.wait(timeout=self.TIMEOUT)
+                if time.time() > start + self.TIMEOUT:
+                    raise IOError(
+                        'Timed out after %ds waiting for import' % self.TIMEOUT
+                    )
                 try:
                     imp = self.cache[fullname]
                 except KeyError:
@@ -111,8 +124,10 @@ class Loader:
         mod.__file__ = PREFIX + m.file
         mod.__loader__ = self
         if m.is_pkg:
-            mod.__path__ = [PREFIX + m.file]
+            modpath = PREFIX + m.file.rsplit('/', 1)[0] + '/'
+            mod.__path__ = [modpath]
             mod.__package__ = modname
+            #mod.__loader__ = Loader(modpath)
         else:
             mod.__package__ = modname.rpartition('.')[0]
         code = compile(m.source, mod.__file__, 'exec', dont_inherit=True)
@@ -127,6 +142,14 @@ class Loader:
 
     def get_source(self, fullname):
         return self.get(fullname).source
+
+    def get_data(self, path):
+        """Get package data from host."""
+        mod = self.path.rsplit('/', 2)[-2]
+        relpath = path[len(self.path):]
+        imp = self.get((mod, relpath))
+        return imp.source
+
 
 
 sys.path.append(PREFIX)
@@ -277,6 +300,7 @@ HEADER = struct.Struct('!LLbb')
 
 MSG_JSON = 0
 MSG_BYTES = 1
+MSG_PCK = 2
 
 
 def send_msg(op, req_id, data):
@@ -304,14 +328,16 @@ def read_msg():
         return
     (size, req_id, op, fmt) = HEADER.unpack(buf)
     data = inpipe.read(size)
-    if fmt == MSG_JSON:
+    if fmt == MSG_PCK:
+        obj = pickle.loads(data)
+    elif fmt == MSG_BYTES:
+        obj = {'data': data}
+    elif fmt == MSG_JSON:
         if PY3:
             data = data.decode('ascii')
         obj = json.loads(data)
         if PY2:
             obj = dict((str(k), v) for k, v in obj.iteritems())
-    else:
-        obj = {'data': data}
     return (req_id, op, obj)
 
 
@@ -327,7 +353,10 @@ HANDLERS = {
 def reader():
     try:
         while True:
-            req_id, op, params = read_msg()
+            msg = read_msg()
+            if msg is None:
+                break
+            req_id, op, params = msg
             HANDLERS[op](req_id, **params)
     finally:
         outqueue.put(done)

@@ -11,6 +11,13 @@ from chopsticks.tunnel import Docker
 from chopsticks.facts import python_version
 
 
+def hash_pkg_data(pkg, fname):
+    """Load package data and calculate the hash of it."""
+    from hashlib import sha1
+    import pkgutil
+    return sha1(pkgutil.get_data(pkg, fname)).hexdigest()
+
+
 class BasicTest(TestCase):
     def setUp(self):
         self.docker_name = 'unittest-%d' % random.randint(0, 1e9)
@@ -23,7 +30,6 @@ class BasicTest(TestCase):
         for l in ls[1:]:
             ws = l.split()
             images.append(ws[-1])
-        print(images)
         assert self.docker_name not in images, \
             "Image %r remained running after test" % self.docker_name
 
@@ -76,3 +82,15 @@ class BasicTest(TestCase):
                 return
         else:
             raise AssertionError('File not found in remote listing')
+
+    def test_get_data(self):
+        """We can load package data from the host."""
+        hash = hash_pkg_data('chopsticks', 'bubble.py')
+        remotehash = self.tunnel.call(
+            hash_pkg_data, 'chopsticks', 'bubble.py'
+        )
+        self.assertEqual(
+            remotehash,
+            hash,
+            msg='Failed to load bubble.py from host'
+        )

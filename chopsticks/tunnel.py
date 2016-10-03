@@ -98,6 +98,8 @@ class BaseTunnel:
         return self.req_id
 
     def handle_imp(self, mod):
+        key = mod
+        fname = None
         if mod == '__main__':
             # Special-case main to find real main module
             main = sys.modules['__main__']
@@ -112,6 +114,10 @@ class BaseTunnel:
                 source=open(path, 'r').read()
             )
             return
+        elif isinstance(mod, list):
+            mod, fname = mod
+            if not mod:
+                mod, fname = fname.split('/', 1)
 
         stem = mod.replace('.', os.sep)
         paths = [
@@ -119,27 +125,31 @@ class BaseTunnel:
             (False, stem + '.py'),
         ]
 
-        try:
-            for root in sys.path:
-                for is_pkg, rel in paths:
-                    path = os.path.join(root, rel)
-                    if os.path.exists(path):
-                        self.write_msg(
-                            OP_IMP,
-                            0,
-                            mod=mod,
-                            exists=True,
-                            is_pkg=is_pkg,
-                            file=rel,
-                            source=open(path, 'r').read()
-                        )
-                        return
-        except:
-            pass
+        for root in sys.path:
+            for is_pkg, rel in paths:
+                path = os.path.join(root, rel)
+                if os.path.exists(path):
+                    if fname is not None:
+                        path = os.path.join(root, stem, fname)
+                        if not os.path.exists(path):
+                            break
+                        rel = stem + '/' + fname
+                        is_pkg = False
+
+                    self.write_msg(
+                        OP_IMP,
+                        0,
+                        mod=key,
+                        exists=True,
+                        is_pkg=is_pkg,
+                        file=rel,
+                        source=open(path, 'rb').read()
+                    )
+                    return
         self.write_msg(
             OP_IMP,
             0,
-            mod=mod,
+            mod=key,
             exists=False,
             is_pkg=False,
             file=None,

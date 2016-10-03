@@ -6,12 +6,16 @@ import json
 import struct
 import weakref
 from select import select
+
 __metaclass__ = type
 
 PY2 = sys.version_info < (3,)
 
 if PY2:
     bytes = str
+    import cPickle as pickle
+else:
+    import pickle
 
 
 def nonblocking_fd(fd):
@@ -24,6 +28,7 @@ HEADER = struct.Struct('!LLbb')
 
 MSG_JSON = 0
 MSG_BYTES = 1
+MSG_PCK = 2
 
 
 class MessageReader:
@@ -105,10 +110,8 @@ class MessageWriter:
     def _encode(self, op, req_id, data):
         """Encode the given message."""
         if isinstance(data, dict):
-            data = json.dumps(data)
-            if not PY2:
-                data = data.encode('ascii')
-            fmt = MSG_JSON
+            data = pickle.dumps(data)
+            fmt = MSG_PCK
         else:
             fmt = MSG_BYTES
 
