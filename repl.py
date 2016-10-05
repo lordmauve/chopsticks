@@ -4,9 +4,13 @@ import ast
 import sys
 import readline
 import traceback
-from io import StringIO
 
 PY2 = sys.version_info < (3,)
+
+if PY2:
+    from cStringIO import StringIO
+else:
+    from io import StringIO
 
 if PY2:
     input = raw_input
@@ -45,14 +49,13 @@ namespace = {}
 
 
 def runit(stmt):
-    sys.stderr.write(repr(stmt) + '\n')
     code = compile(stmt, '<stdin>', 'single', dont_inherit=True)
-    sys.stdout = StringIO()
+    buf = sys.stdout = StringIO()
     try:
         result = exec_(code, namespace)
     except Exception:
         return False, traceback.format_exc()
-    return True, sys.stdout.getvalue()
+    return True, buf.getvalue()
 
 
 def dorepl(group):
