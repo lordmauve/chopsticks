@@ -50,6 +50,7 @@ from collections import namedtuple
 import signal
 from hashlib import sha1
 import traceback
+from base64 import b64decode
 
 outqueue = Queue(maxsize=10)
 tasks = Queue()
@@ -65,7 +66,7 @@ class Loader:
     # Imports that don't succeed after this amount of time will time out
     # This can help crash a remote process when the controller hangs, thus
     # breaking the deadlock.
-    TIMEOUT = 10  # seconds
+    TIMEOUT = 5  # seconds
 
     cache = {}
     lock = threading.RLock()
@@ -94,12 +95,16 @@ class Loader:
                 self.ev.wait(timeout=self.TIMEOUT)
                 if time.time() > start + self.TIMEOUT:
                     raise IOError(
-                        'Timed out after %ds waiting for import' % self.TIMEOUT
+                        'Timed out after %ds waiting for import' % self.TIMEOUT +
+                        '%s in %s' % (fullname, self.cache)
                     )
                 try:
                     imp = self.cache[fullname]
                 except KeyError:
-                    continue
+                    raise IOError(
+                        'Did not find %s in %s' % (fullname, self.cache)
+                    )
+                    # continue
                 else:
                     break
         if not imp.exists:
@@ -141,7 +146,7 @@ class Loader:
         return self.get(fullname).is_pkg
 
     def get_source(self, fullname):
-        return self.get(fullname).source
+        return self.get(fullname).source.decode('utf8')
 
     def get_data(self, path):
         """Get package data from host."""
@@ -229,6 +234,7 @@ def do_call(req_id, callable, args=(), kwargs={}):
 
 
 def handle_imp(req_id, mod, exists, is_pkg, file, source):
+    source = b64decode(source)
     Loader.on_receive(mod, Imp(exists, is_pkg, file, source))
 
 
@@ -328,9 +334,7 @@ def read_msg():
         return
     (size, req_id, op, fmt) = HEADER.unpack(buf)
     data = inpipe.read(size)
-    if fmt == MSG_PCK:
-        obj = pickle.loads(data)
-    elif fmt == MSG_BYTES:
+    if fmt == MSG_BYTES:
         obj = {'data': data}
     elif fmt == MSG_JSON:
         if PY3:

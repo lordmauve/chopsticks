@@ -1,9 +1,19 @@
 """A repl across hosts."""
+from __future__ import print_function, unicode_literals
 import ast
 import sys
 import readline
 import traceback
 from io import StringIO
+
+PY2 = sys.version_info < (3,)
+
+if PY2:
+    input = raw_input
+    def exec_(code, namespace):
+        exec('exec code in namespace')
+else:
+    exec_ = eval('exec')
 
 
 def read_stmt():
@@ -33,11 +43,13 @@ def read_stmt():
 
 namespace = {}
 
+
 def runit(stmt):
+    sys.stderr.write(repr(stmt) + '\n')
     code = compile(stmt, '<stdin>', 'single', dont_inherit=True)
     sys.stdout = StringIO()
     try:
-        result = exec(code, namespace)
+        result = exec_(code, namespace)
     except Exception:
         return False, traceback.format_exc()
     return True, sys.stdout.getvalue()
@@ -45,6 +57,7 @@ def runit(stmt):
 
 def dorepl(group):
     from chopsticks.tunnel import ErrorResult
+    from repl import runit
     try:
         stmt = read_stmt()
     except Exception:
@@ -73,7 +86,16 @@ def dorepl(group):
 if __name__ == '__main__':
     from chopsticks.tunnel import Docker
     from chopsticks.group import Group
+    import chopsticks.ioloop
+
+    chopsticks.ioloop.PICKLE_LEVEL = 2
+
+    class Py2Docker(Docker):
+        python3 = 'python2'
+
     group = Group([
+        Py2Docker('python2.7', image='python:2.7'),
+        Docker('python3.3', image='python:3.3'),
         Docker('python3.4', image='python:3.4'),
         Docker('python3.5', image='python:3.5'),
         Docker('python3.6', image='python:3.6'),

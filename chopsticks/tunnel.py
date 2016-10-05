@@ -7,7 +7,8 @@ import pkgutil
 import threading
 import tempfile
 from hashlib import sha1
-from .ioloop import IOLoop, StderrReader
+from . import ioloop
+from base64 import b64encode
 
 PY2 = sys.version_info < (3,)
 
@@ -21,10 +22,10 @@ __metaclass__ = type
 
 
 # One global loop for all tunnels
-loop = IOLoop()
+loop = ioloop.IOLoop()
 
 # Another thread will output stderr
-errloop = IOLoop()
+errloop = ioloop.IOLoop()
 
 
 OP_CALL = 0
@@ -97,6 +98,14 @@ class BaseTunnel:
         self.req_id += 1
         return self.req_id
 
+    @staticmethod
+    def _read_source(file):
+        with open(file, 'rb') as f:
+            data = b64encode(f.read())
+            if not PY2:
+                data = data.decode('ascii')
+            return data
+
     def handle_imp(self, mod):
         key = mod
         fname = None
@@ -111,7 +120,7 @@ class BaseTunnel:
                 exists=True,
                 is_pkg=False,
                 file=os.path.basename(path),
-                source=open(path, 'r').read()
+                source=self._read_source(path)
             )
             return
         elif isinstance(mod, list):
@@ -143,7 +152,7 @@ class BaseTunnel:
                         exists=True,
                         is_pkg=is_pkg,
                         file=rel,
-                        source=open(path, 'rb').read()
+                        source=self._read_source(path)
                     )
                     return
         self.write_msg(
@@ -210,7 +219,7 @@ class BaseTunnel:
         self.write_msg(
             OP_CALL,
             req_id=id,
-            data=pickle.dumps(params, pickle.HIGHEST_PROTOCOL)
+            data=pickle.dumps(params, ioloop.PICKLE_LEVEL)
         )
 
     def fetch(self, remote_path, local_path=None):
@@ -356,7 +365,7 @@ class PipeTunnel(BaseTunnel):
         self.reader = loop.reader(self.rpipe, self)
         self.writer = loop.writer(self.wpipe)
 
-        self.errreader = StderrReader(errloop, self.epipe, self.host)
+        self.errreader = ioloop.StderrReader(errloop, self.epipe, self.host)
         start_errloop()
 
     def on_error(self, err):

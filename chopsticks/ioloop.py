@@ -28,7 +28,6 @@ HEADER = struct.Struct('!LLbb')
 
 MSG_JSON = 0
 MSG_BYTES = 1
-MSG_PCK = 2
 
 
 class MessageReader:
@@ -110,8 +109,8 @@ class MessageWriter:
     def _encode(self, op, req_id, data):
         """Encode the given message."""
         if isinstance(data, dict):
-            data = pickle.dumps(data)
-            fmt = MSG_PCK
+            data = json.dumps(data).encode('ascii')
+            fmt = MSG_JSON
         else:
             fmt = MSG_BYTES
 
