@@ -415,9 +415,26 @@ class SubprocessTunnel(PipeTunnel):
         python = self.python2 if PY2 else self.python3
         return [python] + self.PYTHON_ARGS
 
-    def __del__(self):
+    def kill(self):
         self.wpipe.close()  # Terminate child
-        self.proc.wait()
+        if self.proc.poll() is not None:
+            # subprocess is already dead
+            return
+        try:
+            self.terminate()
+            self.proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self._warn('Timeout expired waiting for pipe to close')
+
+    def __del__(self):
+        self.kill()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, trackback):
+        self.kill()
 
 
 class Local(SubprocessTunnel):
