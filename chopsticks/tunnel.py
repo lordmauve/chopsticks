@@ -421,7 +421,7 @@ class SubprocessTunnel(PipeTunnel):
             # subprocess is already dead
             return
         try:
-            self.terminate()
+            self.proc.terminate()
             self.proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.proc.kill()
