@@ -91,7 +91,7 @@ if __name__ == '__main__':
     from chopsticks.group import Group
     import chopsticks.ioloop
 
-    chopsticks.ioloop.PICKLE_LEVEL = 2
+    chopsticks.tunnel.PICKLE_LEVEL = 2
 
     class Py2Docker(Docker):
         python3 = 'python2'

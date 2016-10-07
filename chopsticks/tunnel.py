@@ -10,6 +10,15 @@ from hashlib import sha1
 from . import ioloop
 from base64 import b64encode
 
+
+#: The pickle level to use when pickling callables and parameters
+#:
+#: Default to -1, which indicates the highest pickle level regardless of
+#: Python version. Applications may like to lower this level in order to allow
+#: code to operate across a range of Python versions.
+PICKLE_LEVEL = -1
+
+
 PY2 = sys.version_info < (3,)
 
 if PY2:
@@ -17,9 +26,7 @@ if PY2:
 else:
     import pickle
 
-
 __metaclass__ = type
-
 
 # One global loop for all tunnels
 loop = ioloop.IOLoop()
@@ -219,7 +226,7 @@ class BaseTunnel:
         self.write_msg(
             OP_CALL,
             req_id=id,
-            data=pickle.dumps(params, ioloop.PICKLE_LEVEL)
+            data=pickle.dumps(params, PICKLE_LEVEL)
         )
 
     def fetch(self, remote_path, local_path=None):
