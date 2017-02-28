@@ -6,6 +6,7 @@ import os.path
 import pkgutil
 import threading
 import tempfile
+import time
 from hashlib import sha1
 from . import ioloop
 from base64 import b64encode
@@ -420,12 +421,20 @@ class SubprocessTunnel(PipeTunnel):
         if self.proc.poll() is not None:
             # subprocess is already dead
             return
-        try:
-            self.proc.terminate()
-            self.proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
-            self._warn('Timeout expired waiting for pipe to close')
+
+        # Send TERM
+        self.proc.terminate()
+
+        # Wait for process to shut down cleanly
+        timeout = time.time() + 5
+        while time.time() < timeout:
+            if self.proc.poll() is not None:
+                return
+            time.sleep(0.01)
+
+        # Process did not shut down cleanly; force kill it
+        self.proc.kill()
+        self._warn('Timeout expired waiting for pipe to close')
 
     def __del__(self):
         self.close()
