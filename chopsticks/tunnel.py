@@ -7,8 +7,10 @@ import pkgutil
 import threading
 import tempfile
 from hashlib import sha1
-from . import ioloop
 from base64 import b64encode
+
+from . import ioloop
+from .serialise_main import prepare_callable
 
 
 #: The pickle level to use when pickling callables and parameters
@@ -221,7 +223,7 @@ class BaseTunnel:
     def _call_async(self, on_result, callable, *args, **kwargs):
         id = self._next_id()
         self.callbacks[id] = on_result
-        params = (callable, args, kwargs)
+        params = prepare_callable(callable, args, kwargs)
         self.reader.start()
         self.write_msg(
             OP_CALL,
