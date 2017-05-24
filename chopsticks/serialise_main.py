@@ -22,7 +22,7 @@ def trace_globals(code):
     return loads
 
 
-def serialise_func(f):
+def serialise_func(f, seen=()):
     """Serialise a function defined in __main__ to be called remotely."""
     source = inspect.getsource(f)
 
@@ -44,6 +44,15 @@ def serialise_func(f):
             continue
         if isinstance(v, types.ModuleType):
             imported_names[name] = v.__name__
+        elif isinstance(v, types.FunctionType) and v.__module__ == '__main__':
+            if v in seen:
+                continue
+            else:
+                subdeps = serialise_func(v, seen=seen + (f, v,))
+                vsource, _, _, vnames, vvars = subdeps
+                source += '\n\n' + vsource
+                imported_names.update(vnames)
+                variables.update(vvars)
         else:
             variables[name] = v
 
