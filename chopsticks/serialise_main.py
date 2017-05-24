@@ -13,13 +13,42 @@ def trace_globals(code):
     LOAD_NAME = dis.opmap['LOAD_NAME']
     global_ops = (LOAD_GLOBAL, LOAD_NAME)
     loads = set()
-    for _, op, arg in dis._unpack_opargs(code.co_code):
+    for op, arg in iter_opcodes(code.co_code):
         if op in global_ops:
             loads.add(code.co_names[arg])
     for c in code.co_consts:
         if isinstance(c, types.CodeType):
             loads.update(trace_globals(c))
     return loads
+
+
+def iter_opcodes(code):
+    """Iterate over (op, arg) parameters in the bytecode of code.
+
+    Taken from the code of the dis module.
+
+    """
+    if sys.version_info >= (3, 4):
+        # Py3 has a function for this
+        for _, op, arg in dis._unpack_opargs(code):
+            yield (op, arg)
+        return
+
+    n = len(code)
+    i = 0
+    extended_arg = 0
+    while i < n:
+        c = code[i]
+        op = ord(c)
+        i = i + 1
+        if op >= dis.HAVE_ARGUMENT:
+            oparg = ord(code[i]) + ord(code[i + 1]) * 256 + extended_arg
+            extended_arg = 0
+            i = i + 2
+            if op == dis.EXTENDED_ARG:
+                extended_arg = oparg * long(65536)
+            else:
+                yield op, oparg
 
 
 def serialise_func(f, seen=()):
