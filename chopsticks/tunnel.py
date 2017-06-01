@@ -450,9 +450,39 @@ class SubprocessTunnel(PipeTunnel):
 
 class Local(SubprocessTunnel):
     """A tunnel to a subprocess on the same host."""
+
     def __init__(self, name='localhost'):
         self.host = name
         super(Local, self).__init__()
+
+
+class Sudo(SubprocessTunnel):
+    """A tunnel to a process on the same host, launched with sudo."""
+
+    def __init__(self, user='root', name=None):
+        self.user = user
+        self.host = name or user + '@localhost'
+        super(Sudo, self).__init__()
+
+    def cmd_args(self):
+        args = [
+            'sudo',
+            '--non-interactive',
+            '-u', self.user
+        ]
+        args += super(Sudo, self).cmd_args()
+        return args
+
+    def close(self):
+        """Close the tunnel.
+
+        Here we override the base class implementation which tries to kill
+        the tunnel if it does not shut down in a timely fashion, because we
+        cannot kill a root process.
+
+        """
+        self.wpipe.close()
+        self.proc.wait()
 
 
 class Docker(SubprocessTunnel):
@@ -488,9 +518,10 @@ class Docker(SubprocessTunnel):
 
 class SSHTunnel(SubprocessTunnel):
     """A tunnel that connects to a remote host over SSH."""
-    def __init__(self, host, user=None):
+    def __init__(self, host, user=None, sudo=False):
         self.host = host
         self.user = user
+        self.sudo = sudo
         super(SubprocessTunnel, self).__init__()
 
     def cmd_args(self):
@@ -498,6 +529,8 @@ class SSHTunnel(SubprocessTunnel):
         if self.user:
             args.extend(['-l', self.user])
         args.append(self.host)
+        if self.sudo:
+            args.append('sudo')
         args.extend(super(SSHTunnel, self).cmd_args())
         return ['"%s"' % w if ' ' in w else w for w in args]
 
