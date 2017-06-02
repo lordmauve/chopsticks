@@ -56,8 +56,8 @@ create your own libraries of orchestration functions to call on remote hosts
     for host, addr in group.call(ip).successful():
         print('%s ip:' % host, addr)
 
-Subclasses of tunnels allow connecting without SSH, such as to fresh Docker
-containers::
+Subclasses of tunnels allow connecting using streams other than SSH, such as
+using ``sudo``, or to fresh Docker containers for sandboxing::
 
     from chopsticks.tunnel import Docker
     from chopsticks.group import Group

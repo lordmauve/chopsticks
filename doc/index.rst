@@ -3,19 +3,25 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Chopsticks - a Pythonic orchestration library
-=============================================
+.. image:: _static/chopsticks.svg
+    :align: center
+    :alt: Chopsticks - a Pythonic orchestration library
+    :width: 400
 
-Chopsticks is an orchestration library: it lets you manage and configure
-remote hosts over SSH.
+Chopsticks is an orchestration and remote execution library. It lets you run
+Python code elsewhere: on remote hosts over SSH, in a Docker sandbox, on the
+local host (optionally with ``sudo``) - even all of these in parallel.
 
-Naturally this is agentless and nothing needs to be installed on the remote
-host except Python and an SSH agent.
+Naturally this is agentless and nothing needs to be installed on remote
+hosts except Python and an SSH agent.
 
 Chopsticks was built for extensibility. Remote hosts may import Python code
 from the orchestration host on demand, so remote agents can immediately use
 new functions you define. In effect, you have access to the same codebase on
 remote hosts as on the orchestration host.
+
+Chopsticks Documentation
+========================
 
 Contents:
 
