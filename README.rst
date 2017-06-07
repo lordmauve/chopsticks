@@ -72,6 +72,26 @@ using ``sudo``, or to fresh Docker containers for sandboxing::
     for host, python_version in group.call(python_version).items():
         print('%s Python version:' % host, python_version)
 
+Tunnels and Groups connect lazily (or you can connect them proactively by
+calling ``connect()``). They are also usable as context managers::
+
+    # Explictly connect and disconnect
+    group.connect()
+    group.call(time.time)
+    group.close()
+
+    # Reconnect and disconnect as context manager
+    with group:
+        group.call(time.time)
+
+    # Implicit reconnect
+    group.call(time.time)
+
+    # Disconnect when destroyed
+    del group
+
+Naturally, any remote state (imports, globals, etc) is lost when the
+Tunnel/Group is closed.
 
 Installation
 ------------

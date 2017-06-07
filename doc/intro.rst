@@ -40,6 +40,28 @@ You can also run your code within Docker containers::
     dkr = Docker('py36', image='python:3.6')
     print(dkr.call(python_version))
 
+Tunnels and Groups connect lazily (or you can connect them proactively by
+calling ``connect()``). They are also usable as context managers::
+
+    # Explictly connect and disconnect
+    group.connect()
+    group.call(time.time)
+    group.close()
+
+    # Reconnect and disconnect as context manager
+    with group:
+        group.call(time.time)
+
+    # Implicit reconnect
+    group.call(time.time)
+
+    # Disconnect when destroyed
+    del group
+
+Naturally, any remote state (imports, globals, etc) is lost when the
+Tunnel/Group is closed.
+
+
 Python 2/3
 ----------
 
@@ -51,6 +73,22 @@ one for the controller process:
 
 * ``/usr/bin/python2`` if the controller process is (any) Python 2.
 * ``/usr/bin/python3`` if the controller process is (any) Python 3.
+
+
+Jupter Notebooks
+----------------
+
+For interactive exploration, Chopsticks can also be used within `Jupyter
+Notebooks`_. Functions defined in Notebook cells are sent over the tunnel as
+fragments of Python source (rather than imported).
+
+This generally gives good results, but is somewhat more magical than
+Chopsticks' standard import behaviour. Any odd behaviour should be reported via
+the `issue tracker`_.
+
+.. _`Jupyter Notebooks`: http://jupyter.org/
+.. _`issue tracker`: https://github.com/lordmauve/chopsticks/issues
+
 
 How it works
 ------------

@@ -5,44 +5,44 @@ How to write a single-file Chopsticks script
 --------------------------------------------
 
 Chopsticks will work very well with a neatly organised codebase of management
-functions, but for a quick and easily distributed script, it is possible to
-write a single-file Chopsticks script. Several caveats apply, however.
+functions, but you can also write a single file script.
 
-First, you very certainly don't want to recursively open sub-tunnels, so
-only start a tunnel if you're executing `__main__`::
+Chopsticks has special logic to handle this case, which is different from
+the standard import machinery.
+
+The cleanest way to write this script would be::
+
+    from chopsticks import Tunnel
+
 
     def do_it():
         return 'done'
 
-    if __name__ == '__main__':  # This line is important
-        from chopsticks import Tunnel
-        tunnel = Tunnel('remote')
-        tunnel.call(do_it)
-
-
-Note that importing ``chopsticks`` adds a few round trips, and this isn't
-needed on the remote side, which is why we only do that import within the
-``if __name__ == '__main__':`` block.
-
-Python 2 doesn't support monkey-patching of the ``__main__`` module in the
-same way as Python 3, and therefore requires an extra trick.
-Say your script is called ``my_script.py``. Then you should re-import your
-functions from the ``my_script`` module, which will make them importable on
-the remote host::
-
-    def my_remote_func():
-        ...
 
     if __name__ == '__main__':
-        from my_script import my_remote_func
-        # now my_remote_func is my_script.my_remote_func, which can
-        # be unpickled
-        from chopsticks.tunnel import Tunnel
-        Tunnel(hostname).call(my_remote_func)
+        with Tunnel('remote') as tun:
+            tun.call(do_it)
 
-See `issue #7`__ to track the status of this issue.
 
-.. __: https://github.com/lordmauve/chopsticks/issues/7
+Actually, only the ``do_it()`` function, and various globals it uses, are sent
+to the remote host. This code will work just fine::
+
+
+    from chopsticks import Tunnel
+
+
+    def do_it():
+        return 'done'
+
+
+    tunnel = Tunnel('remote')
+    tunnel.call(do_it)
+
+
+This also allows Chopsticks to be used from within `Jupyter Notebooks`_.
+
+.. _`Jupyter Notebooks`: http://jupyter.org/
+
 
 How to customise interpreter paths
 ----------------------------------
