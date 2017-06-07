@@ -111,7 +111,7 @@ class Group:
             for host, err in self.connection_errors.items()
             if host in all_tunnels
         }
-        pickle_versions = []
+        pickle_versions = [pickle.HIGHEST_PROTOCOL]
         for host, r in result.iteritems():
             t = all_tunnels[host]
             err = isinstance(r, ErrorResult)
@@ -122,7 +122,7 @@ class Group:
                 pickle_versions.append(r)
 
         # Use a common pickle version for all of these tunnels
-        pickle_version = min(pickle_versions, default=pickle.HIGHEST_PROTOCOL)
+        pickle_version = min(pickle_versions)
         for t in all_tunnels.values():
             t.pickle_version = pickle_version
 
