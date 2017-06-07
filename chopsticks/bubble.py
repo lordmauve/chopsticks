@@ -378,7 +378,7 @@ def writer():
 for func in (reader, writer):
     threading.Thread(target=func).start()
 
-
+send_msg(OP_RET, 0, {'ret': pickle.HIGHEST_PROTOCOL})
 while True:
     task = tasks.get()
     if task is done:

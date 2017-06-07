@@ -11,6 +11,7 @@ __metaclass__ = type
 
 PY2 = sys.version_info < (3,)
 
+
 if PY2:
     bytes = str
     import cPickle as pickle
@@ -23,6 +24,7 @@ def nonblocking_fd(fd):
         fd = fd.fileno()
     fcntl.fcntl(fd, fcntl.F_SETFL, os.O_NONBLOCK)
     return fd
+
 
 HEADER = struct.Struct('!LLbb')
 
@@ -117,7 +119,11 @@ class MessageWriter:
         return HEADER.pack(len(data), req_id, op, fmt) + data
 
     def write(self, op, req_id, data):
-        self.queue.append(self._encode(op, req_id, data))
+        self.write_raw(self._encode(op, req_id, data))
+
+    def write_raw(self, bytes):
+        """Write a byte string to the fd."""
+        self.queue.append(bytes)
         self.loop.want_write(self.fd, self.on_write)
 
     def write_iter(self, iterable):

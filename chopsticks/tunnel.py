@@ -14,14 +14,6 @@ from . import ioloop
 from .serialise_main import prepare_callable
 
 
-#: The pickle level to use when pickling callables and parameters
-#:
-#: Default to -1, which indicates the highest pickle level regardless of
-#: Python version. Applications may like to lower this level in order to allow
-#: code to operate across a range of Python versions.
-PICKLE_LEVEL = -1
-
-
 PY2 = sys.version_info < (3,)
 
 if PY2:
@@ -48,7 +40,6 @@ OP_FETCH_END = 6
 OP_PUT_BEGIN = 7
 OP_PUT_DATA = 8
 OP_PUT_END = 9
-
 
 
 def start_errloop():
@@ -88,11 +79,20 @@ class BaseTunnel:
     def __init__(self):
         self.req_id = 0
         self.callbacks = {}
-        self.connect()
+        self.connected = False
+        self.pickle_version = pickle.HIGHEST_PROTOCOL
 
     def connect(self):
+        if self.connected:
+            return
+        self._connect_async(loop.stop)
+        self.connected = True
+        pickle_version = loop.run()
+        self.pickle_version = min(pickle.HIGHEST_PROTOCOL, pickle_version)
+
+    def _connect_async(self, callback):
         """Connect the tunnel."""
-        raise NotImplementedError('Subclasses must implement connect()')
+        raise NotImplementedError('Subclasses must implement _connect_async()')
 
     def write_msg(self, op, req_id, data=None, **kwargs):
         """Write one message to the subprocess.
@@ -215,6 +215,7 @@ class BaseTunnel:
         but there is no such restriction on the parameters.
 
         """
+        self.connect()
         self._call_async(loop.stop, callable, *args, **kwargs)
         ret = loop.run()
         if isinstance(ret, ErrorResult):
@@ -229,7 +230,7 @@ class BaseTunnel:
         self.write_msg(
             OP_CALL,
             req_id=id,
-            data=pickle.dumps(params, PICKLE_LEVEL)
+            data=pickle.dumps(params, self.pickle_version)
         )
 
     def fetch(self, remote_path, local_path=None):
@@ -249,6 +250,7 @@ class BaseTunnel:
         * ``sha1sum`` - a sha1 checksum of the file data
 
         """
+        self.connect()
         self._fetch_async(loop.stop, remote_path, local_path)
         ret = loop.run()
         if isinstance(ret, ErrorResult):
@@ -285,6 +287,7 @@ class BaseTunnel:
         * ``sha1sum`` - a sha1 checksum of the file data
 
         """
+        self.connect()
         self._put_async(loop.stop, local_path, remote_path, mode)
         ret = loop.run()
         if isinstance(ret, ErrorResult):
@@ -368,12 +371,15 @@ class PipeTunnel(BaseTunnel):
 
     """
 
-    def connect(self):
+    def _connect_async(self, callback):
         self.connect_pipes()
-        self.wpipe.write(bubble)
-        self.wpipe.flush()
         self.reader = loop.reader(self.rpipe, self)
         self.writer = loop.writer(self.wpipe)
+
+        # Remote sends a pickle_version with req_id 0
+        self.callbacks[0] = callback
+        self.reader.start()
+        self.writer.write_raw(bubble)
 
         self.errreader = ioloop.StderrReader(errloop, self.epipe, self.host)
         start_errloop()
@@ -382,6 +388,39 @@ class PipeTunnel(BaseTunnel):
         err = ErrorResult(err)
         for id in list(self.callbacks):
             self.callbacks.pop(id)(err)
+
+    def close(self):
+        if not self.connected:
+            return
+        self.wpipe.close()  # Terminate child
+        self.connected = False  # Assume we'll disconnect successfully
+
+        if self.proc.poll() is not None:
+            # subprocess is already dead
+            return
+
+        # Send TERM
+        self.proc.terminate()
+
+        # Wait for process to shut down cleanly
+        timeout = time.time() + 5
+        while time.time() < timeout:
+            if self.proc.poll() is not None:
+                return
+            time.sleep(0.01)
+
+        # Process did not shut down cleanly; force kill it
+        self.proc.kill()
+        self._warn('Timeout expired waiting for pipe to close')
+
+    def __del__(self):
+        self.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, trackback):
+        self.close()
 
 
 class SubprocessTunnel(PipeTunnel):
@@ -417,35 +456,6 @@ class SubprocessTunnel(PipeTunnel):
     def cmd_args(self):
         python = self.python2 if PY2 else self.python3
         return [python] + self.PYTHON_ARGS
-
-    def close(self):
-        self.wpipe.close()  # Terminate child
-        if self.proc.poll() is not None:
-            # subprocess is already dead
-            return
-
-        # Send TERM
-        self.proc.terminate()
-
-        # Wait for process to shut down cleanly
-        timeout = time.time() + 5
-        while time.time() < timeout:
-            if self.proc.poll() is not None:
-                return
-            time.sleep(0.01)
-
-        # Process did not shut down cleanly; force kill it
-        self.proc.kill()
-        self._warn('Timeout expired waiting for pipe to close')
-
-    def __del__(self):
-        self.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_value, trackback):
-        self.close()
 
 
 class Local(SubprocessTunnel):

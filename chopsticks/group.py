@@ -1,4 +1,4 @@
-from .tunnel import SSHTunnel, loop, PY2, ErrorResult
+from .tunnel import SSHTunnel, loop, PY2, ErrorResult, pickle
 
 __metaclass__ = type
 
@@ -57,6 +57,7 @@ class Group:
             if isinstance(h, basestring):
                 h = SSHTunnel(h)
             self.tunnels.append(h)
+        self.connection_errors = {}
 
     def _callback(self, host):
         def cb(ret):
@@ -70,11 +71,76 @@ class Group:
 
     def _parallel(self, tunnels, method, *args, **kwargs):
         self.waiting = len(tunnels)
-        self.results = {}
+        self.results = self.connection_errors.copy()
         for t in tunnels:
             m = getattr(t, method)
             m(self._callback(t.host), *args, **kwargs)
         return loop.run()
+
+    def connect(self):
+        """Connect all tunnels."""
+        self._connect(force=True)
+
+    def _connect(self, force=False):
+        """Connect all disconnected tunnels.
+
+        Return a list of the tunnels we ended up connecting. Connection errors
+        are saved into self.connection_errors.
+
+        If force is False, don't attempt to reconnect tunnels that have
+        failed to connect already.
+
+        """
+        all_tunnels = {}
+        connected_tunnels = []
+        disconnected_tunnels = []
+        for t in self.tunnels:
+            all_tunnels[t.host] = t
+            if t.connected:
+                connected_tunnels.append(t)
+            else:
+                if force or t.host not in self.connection_errors:
+                    disconnected_tunnels.append(t)
+
+        if not disconnected_tunnels:
+            return connected_tunnels
+        result = self._parallel(disconnected_tunnels, '_connect_async')
+
+        self.connection_errors = {
+            host: err
+            for host, err in self.connection_errors.items()
+            if host in all_tunnels
+        }
+        pickle_versions = []
+        for host, r in result.iteritems():
+            t = all_tunnels[host]
+            err = isinstance(r, ErrorResult)
+            t.connected = not err
+            if err:
+                self.connection_errors[host] = r
+            else:
+                pickle_versions.append(r)
+
+        # Use a common pickle version for all of these tunnels
+        pickle_version = min(pickle_versions, default=pickle.HIGHEST_PROTOCOL)
+        for t in all_tunnels.values():
+            t.pickle_version = pickle_version
+
+        connected = set(all_tunnels) - set(self.connection_errors)
+        return [t for t in all_tunnels.values() if t.host in connected]
+
+    def close(self):
+        """Close all tunnels."""
+        for t in self.tunnels:
+            t.close()
+
+    def __enter__(self):
+        """Connect all tunnels."""
+        self.connect()
+        return self
+
+    def __exit__(self, *_):
+        self.close()
 
     def call(self, callable, *args, **kwargs):
         """Call the given callable on all hosts in the group.
@@ -88,7 +154,7 @@ class Group:
         The return value is a :class:`GroupResult`.
 
         """
-        tunnels = self.tunnels[:]
+        tunnels = self._connect()
         return self._parallel(tunnels, '_call_async', callable, *args, **kwargs)
 
     def fetch(self, remote_path, local_path=None):
@@ -113,7 +179,7 @@ class Group:
         * ``sha1sum`` - a sha1 checksum of the file data
 
         """
-        tunnels = self.tunnels[:]
+        tunnels = self._connect()
         if local_path is not None:
             names = [local_path.format(host=t.host) for t in tunnels]
             if len(set(names)) != len(tunnels):
@@ -125,7 +191,7 @@ class Group:
             names = [None] * len(tunnels)
 
         self.waiting = len(tunnels)
-        self.results = {}
+        self.results = self.connection_errors.copy()
         for tun, local_path in zip(tunnels, names):
             tun._fetch_async(self._callback(tun.host), remote_path, local_path)
         return loop.run()
@@ -150,7 +216,7 @@ class Group:
         * ``sha1sum`` - a sha1 checksum of the file data
 
         """
-        tunnels = self.tunnels[:]
+        tunnels = self._connect()
         return self._parallel(
             tunnels, '_put_async',
             local_path, remote_path, mode
