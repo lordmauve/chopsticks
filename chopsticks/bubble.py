@@ -51,6 +51,7 @@ import signal
 from hashlib import sha1
 import traceback
 from base64 import b64decode
+import tempfile
 
 outqueue = Queue(maxsize=10)
 tasks = Queue()
@@ -95,8 +96,8 @@ class Loader:
                 self.ev.wait(timeout=self.TIMEOUT)
                 if time.time() > start + self.TIMEOUT:
                     raise IOError(
-                        'Timed out after %ds waiting for import' % self.TIMEOUT +
-                        '%s in %s' % (fullname, self.cache)
+                        'Timed out after %ds waiting for import %r'
+                        % (self.TIMEOUT, fullname)
                     )
                 try:
                     imp = self.cache[fullname]
@@ -246,7 +247,6 @@ def handle_begin_put(req_id, path, mode):
     prev_umask = os.umask(0o077)
     try:
         if path is None:
-            import tempfile
             f = tempfile.NamedTemporaryFile(delete=False)
             path = wpath = f.name
         else:
@@ -262,7 +262,11 @@ def handle_begin_put(req_id, path, mode):
 
 @transmit_errors
 def handle_put_data(req_id, data):
-    f, wpath, path, cksum = active_puts[req_id]
+    try:
+        f, wpath, path, cksum = active_puts[req_id]
+    except KeyError:
+        # Likely we have crashed out already
+        return
     try:
         cksum.update(data)
         f.write(data)
