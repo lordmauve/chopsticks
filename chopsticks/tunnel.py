@@ -11,6 +11,7 @@ from hashlib import sha1
 from base64 import b64encode
 
 from . import ioloop
+from .setops import SetOps
 from .serialise_main import prepare_callable
 
 
@@ -75,7 +76,7 @@ class RemoteException(Exception):
 bubble = pkgutil.get_data('chopsticks', 'bubble.py')
 
 
-class BaseTunnel:
+class BaseTunnel(SetOps):
     def __init__(self):
         self.req_id = 0
         self.callbacks = {}
@@ -93,6 +94,11 @@ class BaseTunnel:
 
     def __repr__(self):
         return '%s(%r)' % (type(self).__name__, self.host)
+
+    def _as_group(self):
+        """Tunnels behave like groups of one tunnel."""
+        from chopsticks.group import Group
+        return Group([self])
 
     def connect(self):
         if self.connected:

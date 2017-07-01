@@ -48,6 +48,14 @@ For example::
 
     (webservers + celery_workers).call(install_virtualenv)
 
+For this purpose, individual tunnels act as a group containing just one
+tunnel::
+
+    >>> dck1 = Docker('docker1')
+    >>> dck2 = Docker('docker2')
+    >>> dck1 + dck2
+    Group([Docker('docker1'), Docker('docker2')])
+
 
 Examples
 ''''''''

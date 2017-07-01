@@ -1,3 +1,4 @@
+from .setops import SetOps
 from .tunnel import SSHTunnel, loop, PY2, ErrorResult, pickle
 
 __metaclass__ = type
@@ -41,7 +42,7 @@ class GroupResult(dict):
         )
 
 
-class Group:
+class Group(SetOps):
     """A group of hosts, for performing operations in parallel."""
 
     def __init__(self, hosts):
@@ -231,41 +232,5 @@ class Group:
     def __repr__(self):
         return '%s(%r)' % (type(self).__name__, self.tunnels)
 
-    def _set_op(self, ano, op):
-        """Perform a set operation on this group and another."""
-        cls = type(self)
-        if not isinstance(ano, cls):
-            raise TypeError(
-                '%r is not an instance of %s' % (ano, cls.__name__)
-            )
-
-        tunnels = op(set(self.tunnels), set(ano.tunnels))
-        grp = cls(tunnels)
-        all_connection_errors = {}
-        for src in [self, ano]:
-            all_connection_errors.update(src.connection_errors)
-        for t in tunnels:
-            if t.host in all_connection_errors:
-                grp.connection_errors[t.host] = all_connection_errors[t.host]
-        return grp
-
-    def union(self, ano):
-        """Return the union of hosts in this group and another."""
-        return self._set_op(ano, set.union)
-
-    def intersection(self, ano):
-        """Return the intersection of hosts in this group and another."""
-        return self._set_op(ano, set.intersection)
-
-    def difference(self, ano):
-        """Return the hosts in this group not in ano."""
-        return self._set_op(ano, set.difference)
-
-    def symmetric_difference(self, ano):
-        """Return the hosts in this group not in ano."""
-        return self._set_op(ano, set.symmetric_difference)
-
-    __or__ = __add__ = union
-    __and__ = intersection
-    __sub__ = difference
-    __xor__ = symmetric_difference
+    def _as_group(self):
+        return self
