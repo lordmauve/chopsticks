@@ -34,6 +34,21 @@ Results
         unavailable.
 
 
+Set operations
+''''''''''''''
+
+Groups also behave like sets over tunnels. Tunnels are compared by name for
+this purpose (in general, tunnels need unique names due to the way results
+are returned from group methods).
+
+For example::
+
+    webservers = Group(['web1', 'web2'])
+    celery_workers = Group(['worker1', 'worker2', 'worker3']
+
+    (webservers + celery_workers).call(install_virtualenv)
+
+
 Examples
 ''''''''
 
