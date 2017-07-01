@@ -83,23 +83,21 @@ class BaseTunnel:
         self.pickle_version = pickle.HIGHEST_PROTOCOL
 
     def __eq__(self, ano):
-        return (
-            type(self) == type(ano) and
-            self.host == ano.host
-        )
+        return self.host == ano.host
 
     def __ne__(self, ano):
-        return (
-            type(self) != type(ano) or
-            self.host != ano.host
-        )
+        return self.host != ano.host
 
     def __hash__(self):
-        return hash((type(self), self.host))
+        return hash(self.host)
+
+    def __repr__(self):
+        return '%s(%r)' % (type(self).__name__, self.host)
 
     def connect(self):
         if self.connected:
             return
+        assert self.host, "No host name received"
         self._connect_async(loop.stop)
         self.connected = True
         pickle_version = loop.run()

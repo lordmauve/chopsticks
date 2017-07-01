@@ -228,6 +228,9 @@ class Group:
             local_path, remote_path, mode
         )
 
+    def __repr__(self):
+        return '%s(%r)' % (type(self).__name__, self.tunnels)
+
     def _set_op(self, ano, op):
         """Perform a set operation on this group and another."""
         cls = type(self)
