@@ -60,7 +60,7 @@ done = object()
 running = True
 
 Imp = namedtuple('Imp', 'exists is_pkg file source')
-PREFIX = 'controller://'
+PREFIX = 'chopsticks://'
 
 
 class Loader:
@@ -86,7 +86,7 @@ class Loader:
             cls.cache[mod] = imp
             cls.ev.notifyAll()
 
-    def get(self, fullname):
+    def _raw_get(self, fullname):
         with self.lock:
             if fullname in self.cache:
                 return self.cache[fullname]
@@ -108,9 +108,14 @@ class Loader:
                     # continue
                 else:
                     break
+        return imp
+
+    def get(self, fullname):
+        imp = self._raw_get(fullname)
         if not imp.exists:
             raise ImportError()
-        return imp
+        source = b64decode(imp.source)
+        return Imp(imp.exists, imp.is_pkg, imp.file, source)
 
     def find_module(self, fullname, path=None):
         try:
@@ -235,7 +240,6 @@ def do_call(req_id, callable, args=(), kwargs={}):
 
 
 def handle_imp(req_id, mod, exists, is_pkg, file, source):
-    source = b64decode(source)
     Loader.on_receive(mod, Imp(exists, is_pkg, file, source))
 
 

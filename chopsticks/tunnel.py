@@ -42,6 +42,8 @@ OP_PUT_BEGIN = 7
 OP_PUT_DATA = 8
 OP_PUT_END = 9
 
+CHOPSTICKS_PREFIX = 'chopsticks://'
+
 
 def start_errloop():
     if errloop.running:  # FIXME: race condition - may be stopping
@@ -106,8 +108,10 @@ class BaseTunnel(SetOps):
         assert self.host, "No host name received"
         self._connect_async(loop.stop)
         self.connected = True
-        pickle_version = loop.run()
-        self.pickle_version = min(pickle.HIGHEST_PROTOCOL, pickle_version)
+        res = loop.run()
+        if isinstance(res, ErrorResult):
+            raise RemoteException(res.msg)
+        self.pickle_version = min(pickle.HIGHEST_PROTOCOL, res)
 
     def _connect_async(self, callback):
         """Connect the tunnel."""
@@ -127,13 +131,17 @@ class BaseTunnel(SetOps):
         self.req_id += 1
         return self.req_id
 
-    @staticmethod
-    def _read_source(file):
+    @classmethod
+    def _read_source(cls, file):
         with open(file, 'rb') as f:
-            data = b64encode(f.read())
-            if not PY2:
-                data = data.decode('ascii')
-            return data
+            return cls._encode_source(f.read())
+
+    @staticmethod
+    def _encode_source(data):
+        data = b64encode(data)
+        if not PY2:
+            data = data.decode('ascii')
+        return data
 
     def handle_imp(self, mod):
         key = mod
@@ -164,6 +172,28 @@ class BaseTunnel(SetOps):
         ]
 
         for root in sys.path:
+            if root == CHOPSTICKS_PREFIX:
+                importer = sys.path_importer_cache[root]
+                if fname:
+                    req = (mod, fname)
+                else:
+                    req = mod
+                try:
+                    imp = importer._raw_get(req)
+                except ImportError:
+                    continue
+                else:
+                    self.write_msg(
+                        OP_IMP,
+                        0,
+                        mod=key,
+                        exists=True,
+                        is_pkg=imp.is_pkg,
+                        file=imp.file,
+                        source=imp.source,
+                    )
+                    return
+
             for is_pkg, rel in paths:
                 path = os.path.join(root, rel)
                 if os.path.exists(path):

@@ -44,7 +44,7 @@ are returned from group methods).
 For example::
 
     webservers = Group(['web1', 'web2'])
-    celery_workers = Group(['worker1', 'worker2', 'worker3']
+    celery_workers = Group(['worker1', 'worker2', 'worker3'])
 
     (webservers + celery_workers).call(install_virtualenv)
 
