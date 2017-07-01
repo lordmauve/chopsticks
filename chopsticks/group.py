@@ -60,6 +60,11 @@ class Group:
         self.connection_errors = {}
 
     def _callback(self, host):
+        """Return a callback to store a result for the given host.
+
+        The callback will stop the loop if all hosts have results.
+
+        """
         def cb(ret):
             self.results[host] = ret
             self.waiting -= 1
@@ -70,6 +75,7 @@ class Group:
         return cb
 
     def _parallel(self, tunnels, method, *args, **kwargs):
+        """Helper to call a method on all tunnels."""
         self.waiting = len(tunnels)
         self.results = self.connection_errors.copy()
         for t in tunnels:
@@ -221,3 +227,42 @@ class Group:
             tunnels, '_put_async',
             local_path, remote_path, mode
         )
+
+    def _set_op(self, ano, op):
+        """Perform a set operation on this group and another."""
+        cls = type(self)
+        if not isinstance(ano, cls):
+            raise TypeError(
+                '%r is not an instance of %s' % (ano, cls.__name__)
+            )
+
+        tunnels = op(set(self.tunnels), set(ano.tunnels))
+        grp = cls(tunnels)
+        all_connection_errors = {}
+        for src in [self, ano]:
+            all_connection_errors.update(src.connection_errors)
+        for t in tunnels:
+            if t.host in all_connection_errors:
+                grp.connection_errors[t.host] = all_connection_errors[t.host]
+        return grp
+
+    def union(self, ano):
+        """Return the union of hosts in this group and another."""
+        return self._set_op(ano, set.union)
+
+    def intersection(self, ano):
+        """Return the intersection of hosts in this group and another."""
+        return self._set_op(ano, set.intersection)
+
+    def difference(self, ano):
+        """Return the hosts in this group not in ano."""
+        return self._set_op(ano, set.difference)
+
+    def symmetric_difference(self, ano):
+        """Return the hosts in this group not in ano."""
+        return self._set_op(ano, set.symmetric_difference)
+
+    __or__ = __add__ = union
+    __and__ = intersection
+    __sub__ = difference
+    __xor__ = symmetric_difference

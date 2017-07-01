@@ -82,6 +82,21 @@ class BaseTunnel:
         self.connected = False
         self.pickle_version = pickle.HIGHEST_PROTOCOL
 
+    def __eq__(self, ano):
+        return (
+            type(self) == type(ano) and
+            self.host == ano.host
+        )
+
+    def __ne__(self, ano):
+        return (
+            type(self) != type(ano) or
+            self.host != ano.host
+        )
+
+    def __hash__(self):
+        return hash((type(self), self.host))
+
     def connect(self):
         if self.connected:
             return
@@ -175,6 +190,17 @@ class BaseTunnel:
             source=''
         )
 
+    def _call_callback(self, req_id, *args):
+        try:
+            cb = self.callbacks.pop(req_id)
+        except KeyError:
+            raise KeyError(
+                'Unknown request ID %d. Last request ID %s. Callbacks: %r'
+                % (req_id, self.req_id, self.callbacks)
+            )
+        else:
+            cb(*args)
+
     def on_message(self, msg):
         """Pump messages until the given ID is received.
 
@@ -187,7 +213,7 @@ class BaseTunnel:
                 'Host %r raised exception; traceback follows' % self.host,
                 data['tb']
             )
-            self.callbacks.pop(req_id)(error)
+            self._call_callback(req_id, error)
         elif op == OP_IMP:
             self.handle_imp(data['imp'])
         elif op == OP_RET:
@@ -195,7 +221,7 @@ class BaseTunnel:
                 self._warn('response received for unknown req_id %d' % req_id)
                 return
 
-            self.callbacks.pop(req_id)(data['ret'])
+            self._call_callback(req_id, data['ret'])
             self.reader.stop()
         elif op == OP_FETCH_DATA:
             if req_id not in self.callbacks:
