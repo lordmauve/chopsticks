@@ -38,6 +38,7 @@ if PY2:
         elif _locs_ is None:
             _locs_ = _globs_
         exec("""exec _code_ in _globs_, _locs_""")
+    range = xrange
 else:
     from queue import Queue
     import pickle
@@ -52,6 +53,10 @@ from hashlib import sha1
 import traceback
 from base64 import b64decode
 import tempfile
+import codecs
+
+
+utf8_decode = codecs.getdecoder('utf8')
 
 outqueue = Queue(maxsize=10)
 tasks = Queue()
@@ -92,30 +97,26 @@ class Loader:
                 return self.cache[fullname]
             send_msg(OP_IMP, 0, {'imp': fullname})
             start = time.time()
-            while True:
-                self.ev.wait(timeout=self.TIMEOUT)
-                if time.time() > start + self.TIMEOUT:
-                    raise IOError(
-                        'Timed out after %ds waiting for import %r'
-                        % (self.TIMEOUT, fullname)
-                    )
-                try:
-                    imp = self.cache[fullname]
-                except KeyError:
-                    raise IOError(
-                        'Did not find %s in %s' % (fullname, self.cache)
-                    )
-                    # continue
-                else:
-                    break
+            self.ev.wait(timeout=self.TIMEOUT)
+            delay = time.time() - start
+            if delay >= self.TIMEOUT:
+                raise IOError(
+                    'Timed out after %ds waiting for import %r'
+                    % (self.TIMEOUT, fullname)
+                )
+            try:
+                imp = self.cache[fullname]
+            except KeyError:
+                raise IOError(
+                    'Did not find %s in %s' % (fullname, self.cache)
+                )
         return imp
 
     def get(self, fullname):
         imp = self._raw_get(fullname)
         if not imp.exists:
             raise ImportError()
-        source = b64decode(imp.source)
-        return Imp(imp.exists, imp.is_pkg, imp.file, source)
+        return imp
 
     def find_module(self, fullname, path=None):
         try:
@@ -160,7 +161,6 @@ class Loader:
         relpath = path[len(self.path):]
         imp = self.get((mod, relpath))
         return imp.source
-
 
 
 sys.path.append(PREFIX)
@@ -314,7 +314,61 @@ HEADER = struct.Struct('!LLbb')
 
 MSG_JSON = 0
 MSG_BYTES = 1
-MSG_PCK = 2
+MSG_PACK = 2
+
+
+SZ = struct.Struct('!I')
+
+
+class obuf(object):
+    def __init__(self, buf):
+        self.buf = buf
+        self.offset = 0
+
+    def read_size(self):
+        v = SZ.unpack_from(self.buf, self.offset)[0]
+        self.offset += SZ.size
+        return v
+
+    def read_bytes(self, n):
+        start = self.offset
+        end = self.offset = start + n
+        return self.buf[start:end]
+
+
+def pdecode(buf):
+    return _decode(obuf(buf))
+
+
+def _decode(obuf):
+    code = obuf.read_bytes(1)
+    if code == b'k':
+        code = b'b' if PY2 else b's'
+
+    if code == b'n':
+        return None
+    elif code == b'b':
+        sz = obuf.read_size()
+        return obuf.read_bytes(sz)
+    elif code == b's':
+        sz = obuf.read_size()
+        return utf8_decode(obuf.read_bytes(sz))[0]
+    elif code == b'1':
+        return obuf.read_bytes(1) == b't'
+    elif code == b'i':
+        sz = obuf.read_size()
+        return int(obuf.read_bytes(sz))
+    elif code == b'l':
+        sz = obuf.read_size()
+        return [_decode(obuf) for _ in range(sz)]
+    elif code == b't':
+        sz = obuf.read_size()
+        return tuple(_decode(obuf) for _ in range(sz))
+    elif code == b'd':
+        sz = obuf.read_size()
+        return dict((_decode(obuf), _decode(obuf)) for _ in range(sz))
+    else:
+        raise ValueError('Unknown pack opcode %r' % code)
 
 
 def send_msg(op, req_id, data):
@@ -350,6 +404,8 @@ def read_msg():
         obj = json.loads(data)
         if PY2:
             obj = dict((str(k), v) for k, v in obj.iteritems())
+    elif fmt == MSG_PACK:
+        obj = pdecode(data)
     return (req_id, op, obj)
 
 

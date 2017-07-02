@@ -134,14 +134,7 @@ class BaseTunnel(SetOps):
     @classmethod
     def _read_source(cls, file):
         with open(file, 'rb') as f:
-            return cls._encode_source(f.read())
-
-    @staticmethod
-    def _encode_source(data):
-        data = b64encode(data)
-        if not PY2:
-            data = data.decode('ascii')
-        return data
+            return f.read()
 
     def handle_imp(self, mod):
         key = mod
