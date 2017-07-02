@@ -79,3 +79,34 @@ So, strictly, these requirements apply:
 
 The tunnel machinery may write to ``stderr``; this output will be presented to
 the user.
+
+
+Recursively tunnelling
+----------------------
+
+Chopsticks can be imported and used on the remote side of a tunnel. This
+situation is called **recursive tunnelling**, and it has its uses. For example:
+
+* You could create an ``SSHTunnel`` to a remote host and then ``Sudo`` to
+  execute certain actions as root.
+* You could maintain a group of ``SSHTunnels`` to physical hosts, that each
+  construct a pool of ``Docker`` tunnels - for an instant cluster.
+
+Recursion could be dangerous. For example, consider this function::
+
+    def recursive():
+        with Local() as tun:
+            tun.call(recursive)
+
+This would effectively fork-bomb your host! To avoid this pitfall, Chopsticks
+has a built-in depth limit of 2. You can override this limit by setting ::
+
+    chopsticks.DEPTH_LIMIT = 3
+
+.. caution::
+
+    Do not write ::
+
+        chopsticks.DEPTH_LIMIT += 1
+
+    This will undo the limiting!

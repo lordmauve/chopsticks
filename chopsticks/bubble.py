@@ -203,6 +203,7 @@ OP_FETCH_END = 6
 OP_PUT_BEGIN = 7
 OP_PUT_DATA = 8
 OP_PUT_END = 9
+OP_START = 10
 
 
 # FIXME: handle_call_queued seems to deadlock!
@@ -310,6 +311,13 @@ def handle_end_put(req_id, sha1sum):
     )
 
 
+def handle_start(req_id, host, path, depthlimit):
+    sys._chopsticks_host = host
+    sys._chopsticks_path = path
+    sys._chopsticks_depthlimit = depthlimit
+    send_msg(OP_RET, req_id, {'ret': pickle.HIGHEST_PROTOCOL})
+
+
 HEADER = struct.Struct('!LLbb')
 
 MSG_JSON = 0
@@ -415,7 +423,8 @@ HANDLERS = {
     OP_FETCH_BEGIN: handle_fetch,
     OP_PUT_BEGIN: handle_begin_put,
     OP_PUT_DATA: handle_put_data,
-    OP_PUT_END: handle_end_put
+    OP_PUT_END: handle_end_put,
+    OP_START: handle_start,
 }
 
 def reader():
@@ -442,7 +451,6 @@ def writer():
 for func in (reader, writer):
     threading.Thread(target=func).start()
 
-send_msg(OP_RET, 0, {'ret': pickle.HIGHEST_PROTOCOL})
 while True:
     task = tasks.get()
     if task is done:

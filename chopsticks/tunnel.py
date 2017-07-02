@@ -10,6 +10,7 @@ import time
 from hashlib import sha1
 from base64 import b64encode
 
+import chopsticks
 from . import ioloop
 from .setops import SetOps
 from .serialise_main import prepare_callable
@@ -41,6 +42,7 @@ OP_FETCH_END = 6
 OP_PUT_BEGIN = 7
 OP_PUT_DATA = 8
 OP_PUT_END = 9
+OP_START = 10
 
 CHOPSTICKS_PREFIX = 'chopsticks://'
 
@@ -74,6 +76,11 @@ class ErrorResult:
 
 class RemoteException(Exception):
     """An exception from the remote agent."""
+
+
+class DepthLimitExceeded(Exception):
+    """The recursive tunnel depth limit was hit."""
+
 
 bubble = pkgutil.get_data('chopsticks', 'bubble.py')
 
@@ -425,6 +432,20 @@ class PipeTunnel(BaseTunnel):
     """
 
     def _connect_async(self, callback):
+        try:
+            path = sys._chopsticks_path[:]
+        except AttributeError:
+            path = []
+        path.append(self.host)
+
+        if len(path) > chopsticks.DEPTH_LIMIT:
+            raise DepthLimitExceeded(
+                'Depth limit of %s exceeded at %s' % (
+                    chopsticks.DEPTH_LIMIT,
+                    ' -> '.join(path)
+                )
+            )
+
         self.connect_pipes()
         self.reader = loop.reader(self.rpipe, self)
         self.writer = loop.writer(self.wpipe)
@@ -433,6 +454,14 @@ class PipeTunnel(BaseTunnel):
         self.callbacks[0] = callback
         self.reader.start()
         self.writer.write_raw(bubble)
+
+        self.write_msg(
+            OP_START,
+            req_id=0,
+            host=self.host,
+            path=path,
+            depthlimit=chopsticks.DEPTH_LIMIT,
+        )
 
         self.errreader = ioloop.StderrReader(errloop, self.epipe, self.host)
         start_errloop()

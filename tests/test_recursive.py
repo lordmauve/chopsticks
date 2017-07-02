@@ -1,7 +1,7 @@
 """Test that Chopsticks remote processes can launch tunnels."""
 from unittest import TestCase
 from chopsticks.helpers import output_lines
-from chopsticks.tunnel import Local, Docker
+from chopsticks.tunnel import Local, Docker, RemoteException
 from chopsticks.facts import python_version
 
 
@@ -9,6 +9,12 @@ def ping_docker():
     """Start a docker container and read out its Python version."""
     with Docker('py36', image='python:3.6') as tun:
         return tun.call(python_version)[:2]
+
+
+def recursive():
+    """Infinite recursion, requiring depth limit to stop."""
+    with Local() as tun:
+        tun.call(recursive)
 
 
 class RecursiveTest(TestCase):
@@ -31,3 +37,12 @@ class RecursiveTest(TestCase):
             res,
             [3, 6]
         )
+
+    def test_depth_limit(self):
+        """Recursive tunneling is limited by a depth limit."""
+        with self.assertRaisesRegexp(
+                RemoteException,
+                r'.* chopsticks.tunnel.DepthLimitExceeded: Depth limit of 2 ' +
+                'exceeded at localhost -> localhost -> localhost'):
+            recursive()
+
