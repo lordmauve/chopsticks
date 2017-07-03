@@ -1,5 +1,5 @@
 from .setops import SetOps
-from .tunnel import SSHTunnel, loop, PY2, ErrorResult, pickle
+from .tunnel import SSHTunnel, loop, PY2, ErrorResult, pickle, RemoteException
 
 __metaclass__ = type
 
@@ -30,10 +30,27 @@ class GroupResult(dict):
             yield host, res
 
     def failures(self):
-        """Iterate over failed results as (host err) pairs."""
+        """Iterate over failed results as (host, err) pairs."""
         for host, res in self.iteritems():
             if isinstance(res, ErrorResult):
                 yield host, res
+
+    def raise_failures(self):
+        """Raise a RemoteException if there were any failures."""
+        failures = []
+        for host, err in self.failures():
+            failures.append(
+                '[%s] %s' % (host, err.msg)
+            )
+
+        if failures:
+            raise RemoteException(
+                '{}/{} hosts had failures:\n\n{}'.format(
+                    len(failures),
+                    len(self.tunnels),
+                    '\n'.join(failures)
+                )
+            )
 
     def __repr__(self):
         return '%s(%s)' % (
@@ -234,3 +251,27 @@ class Group(SetOps):
 
     def _as_group(self):
         return self
+
+    def filter(self, predicate, exclude=False):
+        """Return a Group of the tunnels for which `predicate` returns True.
+
+        `predicate` must be a no-argument callable that can be pickled.
+
+        If `exclude` is True, then return a Group that only contains tunnels
+        for which predicate returns False.
+
+        Raise RemoteException if any hosts could not be connected or fail to
+        evaluate the predicate.
+
+        """
+        result = self.call(predicate)
+        result.raise_failures()
+
+        if exclude:
+            op = lambda x: not x
+        else:
+            op = bool
+
+        include = set(host for host, res in result.successful() if op(res))
+        cls = type(self)
+        return cls([t for t in self.tunnels if t.host in include])

@@ -15,9 +15,9 @@ outfd = os.dup(1)
 inpipe = os.fdopen(infd, 'rb')
 outpipe = os.fdopen(outfd, 'wb', 0)
 sys.stdin.close()
-sys.stdin = open(os.devnull, 'rb')
+sys.stdin = open(os.devnull, 'r')
 sys.stdout.close()
-sys.stdout = open(os.devnull, 'wb')
+sys.stdout = open(os.devnull, 'w')
 
 PY2 = sys.version_info < (3,)
 PY3 = not PY2
@@ -43,6 +43,7 @@ else:
     from queue import Queue
     import pickle
     exec_ = getattr(__builtins__, 'exec')
+from imp import is_builtin
 import time
 import json
 import struct
@@ -113,6 +114,8 @@ class Loader:
         return imp
 
     def get(self, fullname):
+        if isinstance(fullname, str) and is_builtin(fullname) != 0:
+            raise ImportError()
         imp = self._raw_get(fullname)
         if not imp.exists:
             raise ImportError()

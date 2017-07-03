@@ -282,6 +282,10 @@ class IOLoop:
         self.running = False
         self.breakr, self.breakw = os.pipe()
 
+        # Hold a reference to os functions we need in shutting down
+        self.os_write = os.write
+        self.os_read = os.read
+
     def want_write(self, fd, callback):
         self.write[fd] = callback
         self.break_select()
@@ -302,7 +306,7 @@ class IOLoop:
         The bytes written are discarded.
 
         """
-        os.write(self.breakw, b'x')
+        self.os_write(self.breakw, b'x')
 
     def step(self):
         rfds = list(self.read) + [self.breakr]
@@ -310,7 +314,7 @@ class IOLoop:
         rs, ws, xs = select(rfds, wfds, rfds + wfds)
         if self.breakr in rs:
             rs.remove(self.breakr)
-            os.read(self.breakr, 512)
+            self.os_read(self.breakr, 512)
         for r in rs:
             self.read.pop(r)()
         for w in ws:

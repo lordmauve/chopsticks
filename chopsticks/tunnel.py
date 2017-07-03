@@ -144,6 +144,7 @@ class BaseTunnel(SetOps):
             return f.read()
 
     def handle_imp(self, mod):
+        print(mod)
         key = mod
         fname = None
         if mod == '__main__':
@@ -187,7 +188,7 @@ class BaseTunnel(SetOps):
                         OP_IMP,
                         0,
                         mod=key,
-                        exists=True,
+                        exists=imp.exists,
                         is_pkg=imp.is_pkg,
                         file=imp.file,
                         source=imp.source,

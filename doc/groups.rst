@@ -11,14 +11,14 @@ Group API
 .. currentmodule:: chopsticks.group
 
 .. autoclass:: Group
-    :members: __init__, call, fetch, put
+    :members: __init__, call, fetch, put, filter
 
 
 Results
 '''''''
 
 .. autoclass:: GroupResult
-    :members: failures, successful
+    :members: failures, successful, raise_failures
 
 .. autoclass:: ErrorResult
 

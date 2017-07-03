@@ -28,8 +28,10 @@ def ip():
     return None
 
 
-def python_version():
+def python_version(short=False):
     """Get the Python version."""
+    if short:
+        return list(sys.version_info[:2])
     return list(sys.version_info)
 
 

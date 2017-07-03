@@ -42,7 +42,7 @@ class RecursiveTest(TestCase):
         """Recursive tunneling is limited by a depth limit."""
         with self.assertRaisesRegexp(
                 RemoteException,
-                r'.* chopsticks.tunnel.DepthLimitExceeded: Depth limit of 2 ' +
+                r'.*DepthLimitExceeded: Depth limit of 2 ' +
                 'exceeded at localhost -> localhost -> localhost'):
             recursive()
 
