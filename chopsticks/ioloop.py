@@ -5,6 +5,7 @@ import fcntl
 import json
 import struct
 import weakref
+from threading import RLock
 from select import select
 
 __metaclass__ = type
@@ -282,6 +283,11 @@ class IOLoop:
         self.running = False
         self.breakr, self.breakw = os.pipe()
 
+        # Maintain a lock so that only one thread can be running the loop
+        # at once. This makes the loop re-entrant (but the way the loop is
+        # called is not yet threadsafe).
+        self.lock = RLock()
+
         # Hold a reference to os functions we need in shutting down
         self.os_write = os.write
         self.os_read = os.read
@@ -306,7 +312,8 @@ class IOLoop:
         The bytes written are discarded.
 
         """
-        self.os_write(self.breakw, b'x')
+        if self.running:
+            self.os_write(self.breakw, b'x')
 
     def step(self):
         rfds = list(self.read) + [self.breakr]
@@ -332,8 +339,9 @@ class IOLoop:
         self.result = result
 
     def run(self):
-        self.result = None
-        self.running = True
-        while self.running and (self.read or self.write):
-            self.step()
+        with self.lock:
+            self.result = None
+            self.running = True
+            while self.running and (self.read or self.write):
+                self.step()
         return self.result
