@@ -114,11 +114,9 @@ class BaseTunnel(SetOps):
             return
         assert self.host, "No host name received"
         self._connect_async(loop.stop)
-        self.connected = True
         res = loop.run()
         if isinstance(res, ErrorResult):
             raise RemoteException(res.msg)
-        self.pickle_version = min(pickle.HIGHEST_PROTOCOL, res)
 
     def _connect_async(self, callback):
         """Connect the tunnel."""
@@ -256,8 +254,8 @@ class BaseTunnel(SetOps):
                 self._warn('response received for unknown req_id %d' % req_id)
                 return
 
-            self._call_callback(req_id, data['ret'])
             self.reader.stop()
+            self._call_callback(req_id, data['ret'])
         elif op == OP_FETCH_DATA:
             if req_id not in self.callbacks:
                 self._warn('response received for unknown req_id %d' % req_id)
@@ -433,6 +431,9 @@ class PipeTunnel(BaseTunnel):
     """
 
     def _connect_async(self, callback):
+        if self.connected:
+            callback(None)
+            return
         try:
             path = sys._chopsticks_path[:]
         except AttributeError:
@@ -451,8 +452,14 @@ class PipeTunnel(BaseTunnel):
         self.reader = loop.reader(self.rpipe, self)
         self.writer = loop.writer(self.wpipe)
 
-        # Remote sends a pickle_version with req_id 0
-        self.callbacks[0] = callback
+        def wrapped_callback(res):
+            self.connected = not isinstance(res, ErrorResult)
+            if self.connected:
+                # Remote sends a pickle_version in response to OP_START
+                self.pickle_version = min(pickle.HIGHEST_PROTOCOL, res)
+            callback(res)
+        self.callbacks[0] = wrapped_callback
+
         self.reader.start()
         self.writer.write_raw(bubble)
 
