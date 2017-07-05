@@ -372,6 +372,16 @@ class BaseTunnel(SetOps):
             iter_chunks(id, local_path)
         )
 
+    def close():
+        """Disconnect the tunnel.
+
+        Note that this will terminate the remote process and any state will
+        be lost. This does not destroy the Tunnel object, which can be
+        reconnected with :meth:`.connect()`.
+
+        """
+        raise NotImplementedError()
+
 
 def iter_chunks(req_id, path):
     """Iterate over chunks of the given file.
@@ -586,8 +596,19 @@ class Sudo(SubprocessTunnel):
 
 
 class Docker(SubprocessTunnel):
-    """A tunnel connected to a throwaway Docker container."""
+    """A tunnel connected to a throwaway Docker container.
 
+    :param name: The name of the Docker instance to create.
+    :param image: The Docker image to launch. By default, download and run an
+                  `official Docker Python image`__ corresponding to the
+                  running Python version. `Official images are curated by
+                  Docker`__.
+    :param rm: If true, destroy the container when the tunnel is closed.
+
+    .. __: https://hub.docker.com/_/python/
+    .. __: https://docs.docker.com/docker-hub/official_repos/
+
+    """
     #: For the standard Python docker images, Python is not installed as
     #: /usr/bin/python[23]
     python2 = 'python'
@@ -617,7 +638,16 @@ class Docker(SubprocessTunnel):
 
 
 class SSHTunnel(SubprocessTunnel):
-    """A tunnel that connects to a remote host over SSH."""
+    """A tunnel that connects to a remote host over SSH.
+
+    :param host: The hostname to connect to, as would be specified on an
+                 ``ssh`` command line.
+    :param user: The username to connect as.
+    :param sudo: If true, use ``sudo`` on the remote end in order to run as
+                 the ``root`` user. Use this when you can ``sudo`` to root but
+                 not ``ssh`` directly as the root user.
+
+    """
     def __init__(self, host, user=None, sudo=False):
         self.host = host
         self.user = user
