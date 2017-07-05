@@ -12,11 +12,15 @@ Tunnel reference
 
 .. currentmodule:: chopsticks.tunnel
 
+All tunnels support the following methods:
+
+.. autoclass:: BaseTunnel
+    :members: connect, call, fetch, put, close
+
 SSH
 '''
 
 .. autoclass:: SSHTunnel
-    :members: call, fetch, put
 
 .. autoclass:: Tunnel
 
@@ -80,6 +84,8 @@ So, strictly, these requirements apply:
 The tunnel machinery may write to ``stderr``; this output will be presented to
 the user.
 
+
+.. _recursive:
 
 Recursively tunnelling
 ----------------------

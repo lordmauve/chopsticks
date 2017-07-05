@@ -20,6 +20,15 @@ from the orchestration host on demand, so remote agents can immediately use
 new functions you define. In effect, you have access to the same codebase on
 remote hosts as on the orchestration host.
 
+As a taster, let's just get the unix time on a remote server called
+``www.chopsticks.io``, then disconnect::
+
+    import time
+    from chopsticks.tunnel import SSHTunnel
+
+    with SSHTunnel('www.chopsticks.io') as tun:
+        print(tun.call(time.time))
+
 
 Chopsticks Documentation
 ========================
@@ -32,7 +41,10 @@ Contents:
     intro
     tunnels
     groups
+    queues
     howto
+    examples
+    changelog
 
 
 Indices and tables

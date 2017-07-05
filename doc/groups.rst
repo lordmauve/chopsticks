@@ -34,6 +34,8 @@ Results
         unavailable.
 
 
+.. _setops:
+
 Set operations
 ''''''''''''''
 

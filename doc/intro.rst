@@ -1,5 +1,5 @@
 Introduction
-------------
+============
 
 With chopsticks you can simply import functions and hand them to the remote
 host to be executed.
@@ -75,8 +75,8 @@ one for the controller process:
 * ``/usr/bin/python3`` if the controller process is (any) Python 3.
 
 
-Jupter Notebooks
-----------------
+Jupyter Notebooks
+-----------------
 
 For interactive exploration, Chopsticks can also be used within `Jupyter
 Notebooks`_. Functions defined in Notebook cells are sent over the tunnel as
