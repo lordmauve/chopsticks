@@ -9,6 +9,7 @@ import tempfile
 import time
 from hashlib import sha1
 from base64 import b64encode
+from contextlib import contextmanager
 
 import chopsticks
 from . import ioloop
@@ -109,12 +110,22 @@ class BaseTunnel(SetOps):
         from chopsticks.group import Group
         return Group([self])
 
+    def _run_loop(self):
+        """Run the loop, but clean up after crashes."""
+        try:
+            return loop.run()
+        except:
+            self.close()
+            self.callbacks.clear()
+            self.req_id = 0
+            raise
+
     def connect(self):
         if self.connected:
             return
         assert self.host, "No host name received"
         self._connect_async(loop.stop)
-        res = loop.run()
+        res = self._run_loop()
         if isinstance(res, ErrorResult):
             raise RemoteException(res.msg)
 
@@ -142,7 +153,6 @@ class BaseTunnel(SetOps):
             return f.read()
 
     def handle_imp(self, mod):
-        print(mod)
         key = mod
         fname = None
         if mod == '__main__':
@@ -276,7 +286,7 @@ class BaseTunnel(SetOps):
         """
         self.connect()
         self._call_async(loop.stop, callable, *args, **kwargs)
-        ret = loop.run()
+        ret = self._run_loop()
         if isinstance(ret, ErrorResult):
             raise RemoteException(ret.msg)
         return ret
@@ -311,7 +321,7 @@ class BaseTunnel(SetOps):
         """
         self.connect()
         self._fetch_async(loop.stop, remote_path, local_path)
-        ret = loop.run()
+        ret = self._run_loop()
         if isinstance(ret, ErrorResult):
             raise RemoteException(ret.msg)
         return ret
@@ -348,7 +358,7 @@ class BaseTunnel(SetOps):
         """
         self.connect()
         self._put_async(loop.stop, local_path, remote_path, mode)
-        ret = loop.run()
+        ret = self._run_loop()
         if isinstance(ret, ErrorResult):
             raise RemoteException(ret.msg)
         return ret
@@ -489,25 +499,30 @@ class PipeTunnel(BaseTunnel):
         for id in list(self.callbacks):
             self.callbacks.pop(id)(err)
 
+    def _join(self, timeout=5):
+        end = time.time() + timeout
+        while time.time() < end:
+            if self.proc.poll() is not None:
+                return True
+            time.sleep(0.01)
+        return False
+
     def close(self):
         if not self.connected:
             return
         self.wpipe.close()  # Terminate child
+        self.reader.stop()
+        self.writer.stop()
         self.connected = False  # Assume we'll disconnect successfully
-
-        if self.proc.poll() is not None:
-            # subprocess is already dead
+        if self._join(timeout=1):
             return
 
         # Send TERM
         self.proc.terminate()
 
         # Wait for process to shut down cleanly
-        timeout = time.time() + 5
-        while time.time() < timeout:
-            if self.proc.poll() is not None:
-                return
-            time.sleep(0.01)
+        if self._join(timeout=5):
+            return
 
         # Process did not shut down cleanly; force kill it
         self.proc.kill()
@@ -540,8 +555,9 @@ class SubprocessTunnel(PipeTunnel):
     python3 = '/usr/bin/python3'
 
     def connect_pipes(self):
+        args = self.cmd_args()
         self.proc = subprocess.Popen(
-            self.cmd_args(),
+            args,
             bufsize=0,
             stdout=subprocess.PIPE,
             stdin=subprocess.PIPE,

@@ -218,6 +218,10 @@ class MessageWriter:
                 self.iter = self.queue.pop(0)
         self.loop.want_write(self.fd, self.on_write)
 
+    def stop(self):
+        self.loop.abort_write(self.fd)
+        del self.queue[:]
+
 
 class StderrReader:
     """Echo stderr to the console, prefixed by hostname."""
@@ -301,8 +305,12 @@ class IOLoop:
         self.break_select()
 
     def abort_read(self, fd):
-        self.read.pop(fd, None)
-        self.break_select()
+        if self.read.pop(fd, None) is not None:
+            self.break_select()
+
+    def abort_write(self, fd):
+        if self.write.pop(fd, None) is not None:
+            self.break_select()
 
     def break_select(self):
         """Cause the select.select() to break to pick up new fds.
@@ -322,11 +330,15 @@ class IOLoop:
         if self.breakr in rs:
             rs.remove(self.breakr)
             self.os_read(self.breakr, 512)
+        for x in xs:
+            self.write.pop(x, None)
+            reader = self.read.pop(x, None)
+            if reader:
+                reader.errback('Error on stream')
         for r in rs:
             self.read.pop(r)()
         for w in ws:
             self.write.pop(w)()
-        # TODO: handle xs
 
     def reader(self, *args, **kwargs):
         return MessageReader(self, *args, **kwargs)

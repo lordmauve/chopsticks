@@ -47,7 +47,7 @@ class GroupResult(dict):
             raise RemoteException(
                 '{}/{} hosts had failures:\n\n{}'.format(
                     len(failures),
-                    len(self.tunnels),
+                    len(self),
                     '\n'.join(failures)
                 )
             )
@@ -57,6 +57,29 @@ class GroupResult(dict):
             self.__class__.__name__,
             super(GroupResult, self).__repr__()
         )
+
+
+class GroupOp:
+    """An operation in progress on a group."""
+    def __init__(self, callback):
+        self.callback = callback
+        self.results = {}
+        self.waiting = 0
+
+    def make_callback(self, host):
+        """Return a callback to store a result for the given host.
+
+        The callback will trigger the GroupOp's callback once all group
+        results have been received.
+
+        """
+        def cb(ret):
+            self.results[host] = ret
+            self.waiting -= 1
+            if self.waiting <= 0:
+                self.callback(GroupResult(self.results))
+        self.waiting += 1
+        return cb
 
 
 class Group(SetOps):
@@ -77,28 +100,16 @@ class Group(SetOps):
             self.tunnels.append(h)
         self.connection_errors = {}
 
-    def _callback(self, host):
-        """Return a callback to store a result for the given host.
-
-        The callback will stop the loop if all hosts have results.
-
-        """
-        def cb(ret):
-            self.results[host] = ret
-            self.waiting -= 1
-            if self.waiting <= 0:
-                results = self.results
-                self.results = {}
-                loop.stop(GroupResult(results))
-        return cb
+    def _new_op(self):
+        self.op = GroupOp(loop.stop)
+        self.op.results = self.connection_errors.copy()
 
     def _parallel(self, tunnels, method, *args, **kwargs):
         """Helper to call a method on all tunnels."""
-        self.waiting = len(tunnels)
-        self.results = self.connection_errors.copy()
+        self._new_op()
         for t in tunnels:
             m = getattr(t, method)
-            m(self._callback(t.host), *args, **kwargs)
+            m(self.op.make_callback(t.host), *args, **kwargs)
         return loop.run()
 
     def connect(self):
@@ -195,7 +206,7 @@ class Group(SetOps):
         If `local_path` is not given, a temporary file will be used for
         each host.
 
-        Returns a :class:`GroupResult` of dicts, each containing:
+        Return a :class:`GroupResult` of dicts, each containing:
 
         * ``local_path`` - the local path written to
         * ``remote_path`` - the absolute remote path
@@ -214,10 +225,12 @@ class Group(SetOps):
         else:
             names = [None] * len(tunnels)
 
-        self.waiting = len(tunnels)
-        self.results = self.connection_errors.copy()
+        self._new_op()
         for tun, local_path in zip(tunnels, names):
-            tun._fetch_async(self._callback(tun.host), remote_path, local_path)
+            tun._fetch_async(
+                self.op_callback(tun.host),
+                remote_path, local_path
+            )
         return loop.run()
 
     def put(self, local_path, remote_path=None, mode=0o644):
@@ -233,7 +246,7 @@ class Group(SetOps):
         This operation supports arbitarily large files (file data is streamed,
         not buffered in memory).
 
-        The return value:class:`GroupResult` of dicts, each containing:
+        Return a :class:`GroupResult` of dicts, each containing:
 
         * ``remote_path`` - the absolute remote path
         * ``size`` - the number of bytes received

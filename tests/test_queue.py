@@ -1,12 +1,9 @@
 """Test that we can use queues."""
 import random
 import time
-try:
-    from unittest.mock import Mock
-except ImportError:
-    from mock import Mock
 from chopsticks.queue import Queue, AsyncResult
 from chopsticks.tunnel import Docker, Local
+from chopsticks.group import Group, GroupResult
 
 
 def char_range(start, stop):
@@ -32,16 +29,16 @@ def teardown_module():
 def test_result_set():
     """We can set a value on a result."""
     r = AsyncResult()
-    r.set(123)
+    r._set(123)
     assert r.value == 123
 
 
 def test_result_callback():
     """We can set a value on a result."""
-    m = Mock()
-    r = AsyncResult().with_callback(m)
-    r.set(123)
-    m.assert_called_once_with(123)
+    result = []
+    r = AsyncResult().with_callback(result.append)
+    r._set(123)
+    assert result == [123]
 
 
 def test_queuing():
@@ -70,3 +67,35 @@ def test_queuing_parallel():
     # Assert that this was parallel because otherwise this couldn't have
     # completd in under 2 seconds.
     assert 1.0 < duration < 1.3
+
+
+def test_enqueue_in_callback():
+    """We can add new tasks from within a queue callback."""
+    res = []
+    tunnel2 = Local()
+    def enqueue_next(result):
+        res.append(q.call(tunnel2, char_range, b'x', b'z'))
+
+    q = Queue()
+    res.append(
+        q.call(tunnel, char_range, b'a', b'c').with_callback(enqueue_next)
+    )
+    with Local():
+        q.run()
+    assert [r.value for r in res] == ['abc', 'xyz']
+
+
+def test_enqueue_group():
+    """We can use a Queue to call a Group method."""
+    group = Group([
+        Docker('unittest-%d' % random.randint(0, 1e9)),
+        Docker('unittest-%d' % random.randint(0, 1e9))
+    ])
+    q = Queue()
+    result = q.call(group, char_range, b'x', b'z')
+    q.run()
+    group.close()
+    result.value.raise_failures()
+    assert isinstance(result.value, GroupResult)
+    assert [v for host, v in result.value.successful()] == ['xyz'] * 2
+

@@ -6,6 +6,7 @@ from types import MethodType
 from functools import partial
 from collections import defaultdict, deque
 from .tunnel import loop, PY2, ErrorResult, RemoteException, BaseTunnel
+from .group import Group, GroupOp
 
 __metaclass__ = type
 
@@ -44,7 +45,7 @@ class AsyncResult:
             raise NotCompleted('The operation has not completed.')
         return self._value
 
-    def set(self, obj):
+    def _set(self, obj):
         """Set the value of the callback."""
         self._value = obj
         if self._callback:
@@ -69,58 +70,94 @@ class Queue:
     Queues build on Groups and Tunnels in order to feed tasks as quickly as
     possible to all connected hosts.
 
+
+    All methods accept a parameter `target`, which specifies which tunnels the
+    operation should be performed with. This can be specified as a
+    :class:`Tunnel` or a :class:`Group`.
+
+    Each one returns an :class:`AsyncResult` which can be used to receive the
+    result of the operation.
+
     """
     def __init__(self):
         self.queued = {}
         self.running = False
 
+    def _enqueue_group(self, methname, group, args, kwargs):
+        """Enqueue an operation on a Group of tunnels."""
+        async_result = AsyncResult()
+        op = GroupOp(async_result._set)
+        for tunnel in group.tunnels:
+            r = self._enqueue_tunnel(methname, tunnel, args, kwargs)
+            r.with_callback(op.make_callback(tunnel.host))
+        return async_result
+
+    def _enqueue_tunnel(self, methname, tunnel, args, kwargs):
+        """Enqueue an operation on a Tunnel."""
+        async_funcname = '_%s_async' % methname
+        async_func = getattr(tunnel, async_funcname)
+
+        async_result = AsyncResult()
+        try:
+            queue = self.queued[tunnel]
+        except KeyError:
+            queue = self.queued[tunnel] = deque()
+            self.connect(tunnel)
+            if self.running:
+                queue[0]()  # start the connect
+
+        def callback(result):
+            async_result._set(result)
+            assert queue[0] is bound
+            queue.popleft()
+            if queue:
+                queue[0]()
+            else:
+                del self.queued[tunnel]
+                if not self.queued:
+                    loop.stop()
+
+        bound = partial(async_func, callback, *args, **kwargs)
+        queue.append(bound)
+        return async_result
+
     def mkhandler(methname):
         """Create a wrapper for queueing the 'methname' operation."""
         def enqueue(self, target, *args, **kwargs):
-            assert isinstance(target, BaseTunnel), \
-                "Queue does not currently work with groups."""
+            if not isinstance(target, (BaseTunnel, Group)):
+                raise TypeError(
+                    'Invalid target; expected Tunnel or Group'
+                )
 
-            async_funcname = '_%s_async' % methname
-            async_func = getattr(target, async_funcname)
-
-            async_result = AsyncResult()
-            try:
-                queue = self.queued[target]
-            except KeyError:
-                queue = self.queued[target] = deque()
-                self.connect(target)
-
-            def callback(result):
-                async_result.set(result)
-                assert queue[0] is bound
-                queue.popleft()
-                if queue:
-                    queue[0]()
-                else:
-                    del self.queued[target]
-                    if not self.queued:
-                        loop.stop()
-
-            bound = partial(async_func, callback, *args, **kwargs)
-            queue.append(bound)
-            return async_result
-
+            if isinstance(target, Group):
+                m = self._enqueue_group
+            else:
+                m = self._enqueue_tunnel
+            return m(methname, target, args, kwargs)
 
         if PY2:
             enqueue.func_name == methname
         else:
             enqueue.__name__ = methname
         enqueue.__doc__ = (
-            "Queue a %s operation to be run on the given target." % methname
+            "Queue a :meth:`~chopsticks.tunnel.BaseTunnel.{meth}()` operation "
+            "to be run on the target.".format(meth=methname).lstrip()
         )
         return enqueue
 
     connect = mkhandler('connect')
     call = mkhandler('call')
+    fetch = mkhandler('fetch')
+    put = mkhandler('put')
 
     del mkhandler
 
     def run(self):
+        """Run all items in the queue.
+
+        This method does not return until the queue is empty.
+
+        """
         self.running = True
         try:
             for host, queue in iteritems(self.queued):

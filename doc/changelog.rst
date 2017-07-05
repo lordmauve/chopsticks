@@ -34,6 +34,8 @@ Internal Changes
 * Parameters are now sent over the tunnels using a custom binary protocol,
   rather than JSON. This is more efficient for byte strings, as used in the
   importer machinery.
+* Automatically configure the highest pickle version to use based on what is
+  supported by the host.
 
 
 0.5 - 2016-08-07
