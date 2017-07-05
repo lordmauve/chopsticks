@@ -88,6 +88,9 @@ bubble = pkgutil.get_data('chopsticks', 'bubble.py')
 
 class BaseTunnel(SetOps):
     def __init__(self):
+        self._reset()
+
+    def _reset(self):
         self.req_id = 0
         self.callbacks = {}
         self.connected = False
@@ -116,8 +119,6 @@ class BaseTunnel(SetOps):
             return loop.run()
         except:
             self.close()
-            self.callbacks.clear()
-            self.req_id = 0
             raise
 
     def connect(self):
@@ -233,16 +234,20 @@ class BaseTunnel(SetOps):
             source=''
         )
 
-    def _call_callback(self, req_id, *args):
+    def _get_callback(self, req_id, data):
         try:
-            cb = self.callbacks.pop(req_id)
+            return self.callbacks[req_id]
         except KeyError:
-            raise KeyError(
-                'Unknown request ID %d. Last request ID %s. Callbacks: %r'
-                % (req_id, self.req_id, self.callbacks)
+            raise RuntimeError(
+                'response received for unknown req_id %d.' % req_id +
+                ' data: %s' % data +
+                ' callbacks: %s' % self.callbacks
             )
-        else:
-            cb(*args)
+
+    def _pop_callback(self, req_id, data):
+        cb = self._get_callback(req_id, data)
+        del self.callbacks[req_id]
+        return cb
 
     def on_message(self, msg):
         """Pump messages until the given ID is received.
@@ -256,21 +261,14 @@ class BaseTunnel(SetOps):
                 'Host %r raised exception; traceback follows' % self.host,
                 data['tb']
             )
-            self._call_callback(req_id, error)
+            self._pop_callback(req_id, data)(error)
         elif op == OP_IMP:
             self.handle_imp(data['imp'])
         elif op == OP_RET:
-            if req_id not in self.callbacks:
-                self._warn('response received for unknown req_id %d' % req_id)
-                return
-
             self.reader.stop()
-            self._call_callback(req_id, data['ret'])
+            self._pop_callback(req_id, data)(data['ret'])
         elif op == OP_FETCH_DATA:
-            if req_id not in self.callbacks:
-                self._warn('response received for unknown req_id %d' % req_id)
-                return
-            self.callbacks[req_id].recv(data)
+            self._get_callback(req_id, data).recv(data)
         else:
             self._warn('Unknown opcode received %r' % op)
 
@@ -513,7 +511,8 @@ class PipeTunnel(BaseTunnel):
         self.wpipe.close()  # Terminate child
         self.reader.stop()
         self.writer.stop()
-        self.connected = False  # Assume we'll disconnect successfully
+        self._reset()
+
         if self._join(timeout=1):
             return
 

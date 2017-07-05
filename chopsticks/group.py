@@ -110,7 +110,11 @@ class Group(SetOps):
         for t in tunnels:
             m = getattr(t, method)
             m(self.op.make_callback(t.host), *args, **kwargs)
-        return loop.run()
+        try:
+            return loop.run()
+        except:
+            self.close()
+            raise
 
     def connect(self):
         """Connect all tunnels."""
@@ -228,10 +232,14 @@ class Group(SetOps):
         self._new_op()
         for tun, local_path in zip(tunnels, names):
             tun._fetch_async(
-                self.op_callback(tun.host),
+                self.op.make_callback(tun.host),
                 remote_path, local_path
             )
-        return loop.run()
+        try:
+            return loop.run()
+        except:
+            self.close()
+            raise
 
     def put(self, local_path, remote_path=None, mode=0o644):
         """Copy a file to all remote hosts.

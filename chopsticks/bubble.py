@@ -229,18 +229,23 @@ def do_fetch(req_id, path):
                 break
             h.update(chunk)
             send_msg(OP_FETCH_DATA, req_id, chunk)
-    send_msg(
-        OP_RET, req_id, {'ret': {
-            'remote_path': os.path.abspath(path),
-            'sha1sum': h.hexdigest(),
-        }}
-    )
+    return {
+        'remote_path': str(os.path.abspath(path)),
+        'sha1sum': h.hexdigest(),
+    }
 
 
 @transmit_errors
 def do_call(req_id, callable, args=(), kwargs={}):
     ret = callable(*args, **kwargs)
-    send_msg(OP_RET, req_id, {'ret': ret})
+    send_msg(
+        OP_RET,
+        req_id,
+        {
+            'ret': ret,
+            # 'callable': callable.__module__ + '.' + callable.__name__
+        }
+    )
 
 
 def handle_imp(req_id, mod, exists, is_pkg, file, source):
@@ -248,6 +253,12 @@ def handle_imp(req_id, mod, exists, is_pkg, file, source):
 
 
 active_puts = {}
+
+
+def force_str(s):
+    if not isinstance(s, str):
+        return s.decode()
+    return s
 
 
 @transmit_errors
@@ -258,6 +269,7 @@ def handle_begin_put(req_id, path, mode):
             f = tempfile.NamedTemporaryFile(delete=False)
             path = wpath = f.name
         else:
+            path = force_str(path)
             if os.path.isdir(path):
                 raise IOError('%s is a directory' % path)
             wpath = path + '~chopsticks-tmp'
@@ -293,16 +305,24 @@ class ChecksumMismatch(Exception):
 
 @transmit_errors
 def handle_end_put(req_id, sha1sum):
-    f, wpath, path, cksum = active_puts.pop(req_id)
+    try:
+        f, wpath, path, cksum = active_puts.pop(req_id)
+    except KeyError:
+        # Likely we have crashed out already
+        return
     received = f.tell()
     f.close()
     digest = cksum.hexdigest()
+    sha1sum = force_str(sha1sum)
     if digest != sha1sum:
         try:
             os.unlink(wpath)
         except OSError:
             pass
-        raise ChecksumMismatch('Checksum failed for transfer %s' % path)
+        raise ChecksumMismatch(
+            'Checksum failed for transfer %s (%r != %r)' %
+            (path, digest, sha1sum)
+        )
     if wpath != path:
         os.rename(wpath, path)
     send_msg(
@@ -315,8 +335,8 @@ def handle_end_put(req_id, sha1sum):
 
 
 def handle_start(req_id, host, path, depthlimit):
-    sys._chopsticks_host = host
-    sys._chopsticks_path = path
+    sys._chopsticks_host = force_str(host)
+    sys._chopsticks_path = [force_str(p) for p in path]
     sys._chopsticks_depthlimit = depthlimit
     send_msg(OP_RET, req_id, {'ret': pickle.HIGHEST_PROTOCOL})
 

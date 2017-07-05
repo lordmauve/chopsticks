@@ -7,7 +7,7 @@ from chopsticks.facts import python_version
 
 def ping_docker():
     """Start a docker container and read out its Python version."""
-    with Docker('py36', image='python:3.6') as tun:
+    with Docker('unittest-36', image='python:3.6') as tun:
         return tun.call(python_version)[:2]
 
 
@@ -18,7 +18,7 @@ def recursive():
 
 
 class RecursiveTest(TestCase):
-    docker_name = 'py36'
+    docker_name = 'unittest-36'
 
     def tearDown(self):
         ls = output_lines(['docker', 'ps', '-a'])

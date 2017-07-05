@@ -142,11 +142,14 @@ def _pencode(obj, out):
     elif isinstance(obj, dict):
         out.extend([b'd', bsz(obj)])
         for k in obj:
-            if PY2:
-                kbs = str(k)
+            if isinstance(k, str):
+                if PY2:
+                    kbs = str(k)
+                else:
+                    kbs = str(k).encode('utf8')
+                out.extend([b'k', bsz(kbs), kbs])
             else:
-                kbs = str(k).encode('utf8')
-            out.extend([b'k', bsz(kbs), kbs])
+                _pencode(k, out)
             _pencode(obj[k], out)
     elif obj is None:
         out.append(b'n')
