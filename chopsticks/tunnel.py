@@ -87,6 +87,8 @@ bubble = pkgutil.get_data('chopsticks', 'bubble.py')
 
 
 class BaseTunnel(SetOps):
+    HIGHEST_PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
+
     def __init__(self):
         self._reset()
 
@@ -94,7 +96,7 @@ class BaseTunnel(SetOps):
         self.req_id = 0
         self.callbacks = {}
         self.connected = False
-        self.pickle_version = pickle.HIGHEST_PROTOCOL
+        self.pickle_version = self.HIGHEST_PICKLE_PROTOCOL
 
     def __eq__(self, ano):
         return self.host == ano.host
@@ -474,7 +476,7 @@ class PipeTunnel(BaseTunnel):
             self.connected = not isinstance(res, ErrorResult)
             if self.connected:
                 # Remote sends a pickle_version in response to OP_START
-                self.pickle_version = min(pickle.HIGHEST_PROTOCOL, res)
+                self.pickle_version = min(self.HIGHEST_PICKLE_PROTOCOL, res)
             callback(res)
         self.callbacks[0] = wrapped_callback
 

@@ -1,6 +1,7 @@
 """Test that we can use queues."""
 import random
 import time
+import os.path
 from chopsticks.queue import Queue, AsyncResult
 from chopsticks.tunnel import Docker, Local
 from chopsticks.group import Group, GroupResult
@@ -13,6 +14,10 @@ def char_range(start, stop):
 
 
 tunnel = None
+group = Group([
+    Docker('unittest-%d' % random.randint(0, 1e9)),
+    Docker('unittest-%d' % random.randint(0, 1e9))
+])
 
 
 def setup_module():
@@ -23,6 +28,7 @@ def setup_module():
 def teardown_module():
     global tunnel
     tunnel.close()
+    group.close()
     tunnel = None
 
 
@@ -87,15 +93,43 @@ def test_enqueue_in_callback():
 
 def test_enqueue_group():
     """We can use a Queue to call a Group method."""
-    group = Group([
-        Docker('unittest-%d' % random.randint(0, 1e9)),
-        Docker('unittest-%d' % random.randint(0, 1e9))
-    ])
     q = Queue()
     result = q.call(group, char_range, b'x', b'z')
-    q.run()
-    group.close()
+    with group:
+        q.run()
     result.value.raise_failures()
     assert isinstance(result.value, GroupResult)
     assert [v for host, v in result.value.successful()] == ['xyz'] * 2
 
+
+def test_queue_fetch(tmpdir):
+    """We can fetch files from multiple tunnels."""
+    tmpdir = str(tmpdir)
+    q = Queue()
+    res = q.fetch(
+        group,
+        remote_path='/etc/passwd',
+        local_path=tmpdir + '/passwd-{host}'
+    )
+    with group:
+        q.run()
+    res.value.raise_failures()
+    local_paths = sorted(v['local_path'] for v in res.value.values())
+    expected = sorted(tmpdir + '/passwd-' + tun.host for tun in group.tunnels)
+    assert local_paths == expected
+
+
+def test_queue_put():
+    """We can put multiple files to multiple tunnels."""
+    readme = os.path.join(os.path.dirname(__file__), '..', 'README.rst')
+    size = os.stat(readme).st_size
+    q = Queue()
+    res = q.put(
+        group,
+        local_path=readme,
+        remote_path='/tmp/README.rst',
+    )
+    with group:
+        q.run()
+    res.value.raise_failures()
+    assert [v['size'] for v in res.value.values()] == [size] * 2

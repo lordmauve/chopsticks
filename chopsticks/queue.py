@@ -152,6 +152,28 @@ class Queue:
 
     del mkhandler
 
+    # fetch is slightly different because it constructs different local paths
+    # for each host:
+
+    def fetch(self, target, remote_path, local_path=None):
+        """Queue a :meth:`~chopsticks.tunnel.BaseTunnel.fetch()` operation to be run on the target.  """  # noqa
+        if isinstance(target, BaseTunnel):
+            return self._enqueue_tunnel(
+                'fetch', target,
+                (),
+                {'remote_path': remote_path, 'local_path': local_path}
+            )
+
+        async_result = AsyncResult()
+        op = GroupOp(async_result._set)
+        for tun, local_path in Group._local_paths(target.tunnels, local_path):
+            r = self._enqueue_tunnel(
+                'fetch', tun, (),
+                {'remote_path': remote_path, 'local_path': local_path}
+            )
+            r.with_callback(op.make_callback(tun.host))
+        return async_result
+
     def run(self):
         """Run all items in the queue.
 

@@ -196,6 +196,19 @@ class Group(SetOps):
         tunnels = self._connect()
         return self._parallel(tunnels, '_call_async', callable, *args, **kwargs)
 
+    @staticmethod
+    def _local_paths(tunnels, local_path):
+        if local_path is not None:
+            names = [local_path.format(host=t.host) for t in tunnels]
+            if len(set(names)) != len(tunnels):
+                raise ValueError(
+                    'local_path template %s does not give unique paths' %
+                    local_path
+                )
+            return zip(tunnels, names)
+        else:
+            return ((t, None) for t in tunnels)
+
     def fetch(self, remote_path, local_path=None):
         """Fetch files from all remote hosts.
 
@@ -219,18 +232,9 @@ class Group(SetOps):
 
         """
         tunnels = self._connect()
-        if local_path is not None:
-            names = [local_path.format(host=t.host) for t in tunnels]
-            if len(set(names)) != len(tunnels):
-                raise ValueError(
-                    'local_path template %s does not give unique paths' %
-                    local_path
-                )
-        else:
-            names = [None] * len(tunnels)
 
         self._new_op()
-        for tun, local_path in zip(tunnels, names):
+        for tun, local_path in self._local_paths(tunnels, local_path):
             tun._fetch_async(
                 self.op.make_callback(tun.host),
                 remote_path, local_path
