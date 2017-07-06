@@ -1,1 +1,12 @@
-global-include *.py *.rst
+global-exclude *
+
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+
+recursive-include chopsticks *.py
+recursive-include tests *.py
+recursive-include doc *.py *.svg *.rst Makefile
+
+prune doc/_build
+
+include setup.py README.rst LICENSE tox.ini pytest.ini
