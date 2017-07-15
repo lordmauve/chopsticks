@@ -412,6 +412,8 @@ def iter_chunks(req_id, path):
 
 
 class Fetch(object):
+    file = None
+
     def __init__(self, on_result, local_path=None):
         self.on_result = on_result
         if local_path:
@@ -430,6 +432,7 @@ class Fetch(object):
 
     def __call__(self, result):
         self.file.close()
+        self.file = None
         if not isinstance(result, ErrorResult):
             remote_chksum = result['sha1sum']
             if remote_chksum != self.chksum.hexdigest():
@@ -441,6 +444,11 @@ class Fetch(object):
         if isinstance(result, ErrorResult):
             os.unlink(self.local_path)
         self.on_result(result)
+
+    def __del__(self):
+        if self.file:
+            self.file.close()
+            self.file = None
 
 
 class PipeTunnel(BaseTunnel):
