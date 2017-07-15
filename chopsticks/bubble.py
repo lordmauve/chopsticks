@@ -437,6 +437,9 @@ def read_msg():
             obj = dict((str(k), v) for k, v in obj.iteritems())
     elif fmt == MSG_PACK:
         obj = pdecode(data)
+    else:
+        debug('Unknown message format %s' % fmt)
+        return
     return (req_id, op, obj)
 
 
