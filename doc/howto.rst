@@ -48,7 +48,7 @@ How to customise interpreter paths
 ----------------------------------
 
 Chopsticks assumes that the interpreter path on a remote host will be
-``/usr/share/python2`` for Python 2 and ``/usr/share/python3`` for Python 3.
+``/usr/bin/python2`` for Python 2 and ``/usr/bin/python3`` for Python 3.
 However, these paths may not always be correct.
 
 To override the path of the interpreter you can simple subclass :class:`Tunnel`
@@ -60,4 +60,4 @@ To override the path of the interpreter you can simple subclass :class:`Tunnel`
 
 To do this for all tunnels of the same type, modify the attribute on the type::
 
-    Tunnel.python2 = '/usr/bin/python2'
+    Tunnel.python2 = '/usr/local/bin/python2'
