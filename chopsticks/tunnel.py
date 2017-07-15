@@ -83,12 +83,14 @@ class DepthLimitExceeded(Exception):
     """The recursive tunnel depth limit was hit."""
 
 
+# Load/construct the bubble code
 try:
+    # If this is the remote side, we have the bubble code in __main__.__bubble
     bubble = sys.modules['__main__'].__bubble
 except (AttributeError, KeyError):
     pencode = pkgutil.get_data('chopsticks', 'pencode.py')
     bubble = pkgutil.get_data('chopsticks', 'bubble.py')
-    bubble = bubble.replace(b'<< PENCODE >>', pencode)
+    bubble = bubble.replace(b'{{ PENCODE }}', pencode)
     del pencode
 
 

@@ -57,8 +57,6 @@ import tempfile
 import codecs
 
 
-utf8_decode = codecs.getdecoder('utf8')
-
 outqueue = Queue(maxsize=10)
 tasks = Queue()
 done = object()
@@ -348,7 +346,8 @@ MSG_BYTES = 1
 MSG_PACK = 2
 
 
-<< PENCODE >>
+# The source code from chopsticks.pencode will be substituted here
+{{ PENCODE }}
 
 
 def send_msg(op, req_id, data):
