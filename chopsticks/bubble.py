@@ -348,58 +348,7 @@ MSG_BYTES = 1
 MSG_PACK = 2
 
 
-SZ = struct.Struct('!I')
-
-
-class obuf(object):
-    def __init__(self, buf):
-        self.buf = buf
-        self.offset = 0
-
-    def read_size(self):
-        v = SZ.unpack_from(self.buf, self.offset)[0]
-        self.offset += SZ.size
-        return v
-
-    def read_bytes(self, n):
-        start = self.offset
-        end = self.offset = start + n
-        return self.buf[start:end]
-
-
-def pdecode(buf):
-    return _decode(obuf(buf))
-
-
-def _decode(obuf):
-    code = obuf.read_bytes(1)
-    if code == b'k':
-        code = b'b' if PY2 else b's'
-
-    if code == b'n':
-        return None
-    elif code == b'b':
-        sz = obuf.read_size()
-        return obuf.read_bytes(sz)
-    elif code == b's':
-        sz = obuf.read_size()
-        return utf8_decode(obuf.read_bytes(sz))[0]
-    elif code == b'1':
-        return obuf.read_bytes(1) == b't'
-    elif code == b'i':
-        sz = obuf.read_size()
-        return int(obuf.read_bytes(sz))
-    elif code == b'l':
-        sz = obuf.read_size()
-        return [_decode(obuf) for _ in range(sz)]
-    elif code == b't':
-        sz = obuf.read_size()
-        return tuple(_decode(obuf) for _ in range(sz))
-    elif code == b'd':
-        sz = obuf.read_size()
-        return dict((_decode(obuf), _decode(obuf)) for _ in range(sz))
-    else:
-        raise ValueError('Unknown pack opcode %r' % code)
+<< PENCODE >>
 
 
 def send_msg(op, req_id, data):

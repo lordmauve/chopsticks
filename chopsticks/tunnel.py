@@ -83,7 +83,13 @@ class DepthLimitExceeded(Exception):
     """The recursive tunnel depth limit was hit."""
 
 
-bubble = pkgutil.get_data('chopsticks', 'bubble.py')
+try:
+    bubble = sys.modules['__main__'].__bubble
+except (AttributeError, KeyError):
+    pencode = pkgutil.get_data('chopsticks', 'pencode.py')
+    bubble = pkgutil.get_data('chopsticks', 'bubble.py')
+    bubble = bubble.replace(b'<< PENCODE >>', pencode)
+    del pencode
 
 
 class BaseTunnel(SetOps):

@@ -8,6 +8,8 @@ import weakref
 from threading import RLock
 from select import select
 
+from .pencode import pencode
+
 __metaclass__ = type
 
 PY2 = sys.version_info < (3,)
@@ -29,7 +31,6 @@ def nonblocking_fd(fd):
 
 
 HEADER = struct.Struct('!LLbb')
-SZ = struct.Struct('!I')
 
 MSG_JSON = 0
 MSG_BYTES = 1
@@ -102,59 +103,6 @@ class MessageReader:
     def stop(self):
         self.running = False
         self.loop.abort_read(self.fd)
-
-
-def bsz(seq):
-    """Encode the length of a sequence as a big-endian 4-byte unsigned int."""
-    return SZ.pack(len(seq))
-
-
-def pencode(obj):
-    """Tiny binary JSON struct encoder.
-
-    We use this in preference to JSON primarily because it can handle the
-    difference between bytes and unicode strings, which is much more efficient
-    than encoding bytes-as-base64-in-JSON.
-
-    """
-    out = []
-    _pencode(obj, out)
-    return b''.join(out)
-
-
-def _pencode(obj, out):
-    """Inner function for encoding of structures."""
-    if isinstance(obj, bytes):
-        out.extend([b'b', bsz(obj), obj])
-    elif isinstance(obj, unicode):
-        bs = obj.encode('utf8')
-        out.extend([b's', bsz(bs), bs])
-    elif isinstance(obj, bool):
-        out.extend([b'1', b't' if obj else b'f'])
-    elif isinstance(obj, int):
-        bs = str(int(obj)).encode('ascii')
-        out.extend([b'i', bsz(bs), bs])
-    elif isinstance(obj, (tuple, list)):
-        code = b'l' if isinstance(obj, list) else b't'
-        out.extend([code, bsz(obj)])
-        for item in obj:
-            _pencode(item, out)
-    elif isinstance(obj, dict):
-        out.extend([b'd', bsz(obj)])
-        for k in obj:
-            if isinstance(k, str):
-                if PY2:
-                    kbs = str(k)
-                else:
-                    kbs = str(k).encode('utf8')
-                out.extend([b'k', bsz(kbs), kbs])
-            else:
-                _pencode(k, out)
-            _pencode(obj[k], out)
-    elif obj is None:
-        out.append(b'n')
-    else:
-        raise ValueError('Unserialisable type %s' % type(obj))
 
 
 class MessageWriter:
