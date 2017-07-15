@@ -88,6 +88,7 @@ bubble = pkgutil.get_data('chopsticks', 'bubble.py')
 
 class BaseTunnel(SetOps):
     HIGHEST_PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
+    connected = False
 
     def __init__(self):
         self._reset()
