@@ -346,10 +346,6 @@ MSG_BYTES = 1
 MSG_PACK = 2
 
 
-# The source code from chopsticks.pencode will be substituted here
-{{ PENCODE }}
-
-
 def send_msg(op, req_id, data):
     """Send a message to the orchestration host.
 
@@ -408,6 +404,10 @@ def reader():
             if msg is None:
                 break
             req_id, op, params = msg
+            if PY2:
+                params = dict((str(k), v) for k, v in params.iteritems())
+            else:
+                params = dict((force_str(k), v) for k, v in params.items())
             HANDLERS[op](req_id, **params)
     finally:
         outqueue.put(done)
@@ -422,11 +422,20 @@ def writer():
         outpipe.write(msg)
 
 
-for func in (reader, writer):
-    threading.Thread(target=func).start()
 
-while True:
-    task = tasks.get()
-    if task is done:
-        break
-    do_call(*task)
+def run():
+    for func in (reader, writer):
+        threading.Thread(target=func).start()
+
+    while True:
+        task = tasks.get()
+        if task is done:
+            break
+        do_call(*task)
+
+
+# The source code from chopsticks.pencode will be substituted here
+# We do this at the end to minimise changes to line numbers
+{{ PENCODE }}
+
+run()
