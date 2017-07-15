@@ -6,6 +6,22 @@ import dis
 
 PY2 = sys.version_info < (3,)
 
+if PY2:
+    def exec_(_code_, _globs_=None, _locs_=None):
+        """Execute code in a namespace."""
+        if _globs_ is None:
+            frame = sys._getframe(1)
+            _globs_ = frame.f_globals
+            if _locs_ is None:
+                _locs_ = frame.f_locals
+            del frame
+        elif _locs_ is None:
+            _locs_ = _globs_
+        exec("""exec _code_ in _globs_, _locs_""")
+else:
+    import builtins
+    exec_ = getattr(builtins, 'exec')
+
 
 def trace_globals(code):
     """Find the global names loaded within the given code object."""
@@ -28,27 +44,33 @@ def iter_opcodes(code):
     Taken from the code of the dis module.
 
     """
-    if sys.version_info >= (3, 4):
-        # Py3 has a function for this
+    try:
+        unpack_opargs = dis._unpack_opargs
+    except AttributeError:
+        # In Python (< 3.5) we have to parse the bytecode ourselves
+        if PY2:
+            ord_ = ord
+        else:
+            ord_ = lambda c: c
+        n = len(code)
+        i = 0
+        extended_arg = 0
+        while i < n:
+            op = ord_(code[i])
+            i = i + 1
+            if op >= dis.HAVE_ARGUMENT:
+                oparg = ord_(code[i]) + ord_(code[i + 1]) * 256 + extended_arg
+                extended_arg = 0
+                i = i + 2
+                if op == dis.EXTENDED_ARG:
+                    extended_arg = oparg * long(65536)
+                else:
+                    yield op, oparg
+    else:
+        # More recent Python 3 has a function for this, though it is
+        # not a public API.
         for _, op, arg in dis._unpack_opargs(code):
             yield (op, arg)
-        return
-
-    n = len(code)
-    i = 0
-    extended_arg = 0
-    while i < n:
-        c = code[i]
-        op = ord(c)
-        i = i + 1
-        if op >= dis.HAVE_ARGUMENT:
-            oparg = ord(code[i]) + ord(code[i + 1]) * 256 + extended_arg
-            extended_arg = 0
-            i = i + 2
-            if op == dis.EXTENDED_ARG:
-                extended_arg = oparg * long(65536)
-            else:
-                yield op, oparg
 
 
 def serialise_func(f, seen=()):
@@ -101,8 +123,8 @@ chopmain = types.ModuleType('__chopmain__')
 
 def deserialise_func(source, f_name, imports, imported_names, variables):
     """Deserialise a function serialised with serialise_func."""
-    from __bubble__ import exec_
     ns = chopmain.__dict__
+    sys.modules['__chopmain__'] = chopmain
 
     for mod in imports:
         __import__(mod)
