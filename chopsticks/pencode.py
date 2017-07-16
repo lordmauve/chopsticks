@@ -21,9 +21,19 @@ if PY3:
     unicode = str
     range_ = range
     long = int
+    bytes_ = bytes
+    py2str = ()  # Python 3 has a proper bytes/str distinction, no fudge type
 else:
-    bytes = str
     range_ = xrange
+    py2str = str
+    bytes_ = ()  # Python 2 doesn't have an explicit bytes type, so don't
+                 # encode anything as bytes unless explicitly tagged
+
+
+class Bytes(object):
+    """Wrapper to tag a string to be transferred as bytes."""
+    def __init__(self, bytestring):
+        self.bytes = bytestring
 
 
 def pencode(obj):
@@ -68,8 +78,13 @@ class Pencoder(object):
 
         otype = type(obj)
 
-        if isinstance(obj, bytes):
+        if isinstance(obj, bytes_):
             out.extend([b'b', bsz(obj), obj])
+        elif isinstance(obj, Bytes):
+            out.extend([b'b', bsz(obj.bytes), obj.bytes])
+        elif isinstance(obj, py2str):
+            bs = obj.encode('ascii')
+            out.extend([b'S', bsz(bs), bs])
         elif isinstance(obj, unicode):
             bs = obj.encode('utf8')
             out.extend([b's', bsz(bs), bs])
@@ -140,6 +155,11 @@ class PDecoder(object):
         elif code == b's':
             sz = obuf.read_size()
             obj = utf8_decode(obuf.read_bytes(sz))[0]
+        elif code == b'S':
+            sz = obuf.read_size()
+            obj = obuf.read_bytes(sz)
+            if not PY2:
+                obj = obj.decode('ascii')
         elif code == b'1':
             obj = obuf.read_bytes(1) == b't'
         elif code == b'i':

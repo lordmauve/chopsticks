@@ -8,7 +8,7 @@ import weakref
 from threading import RLock
 from select import select
 
-from .pencode import pencode
+from .pencode import pencode, pdecode
 
 __metaclass__ = type
 
@@ -32,9 +32,8 @@ def nonblocking_fd(fd):
 
 HEADER = struct.Struct('!LLbb')
 
-MSG_JSON = 0
 MSG_BYTES = 1
-MSG_PACK = 2
+MSG_PENCODE = 2
 
 
 class MessageReader:
@@ -84,16 +83,16 @@ class MessageReader:
             else:
                 self.msgsize = None
                 self.need = HEADER.size
-                if self.fmt == MSG_JSON:
-                    if not PY2:
-                        chunk = chunk.decode('ascii')
+                if self.fmt == MSG_PENCODE:
                     try:
-                        data = json.loads(chunk)
+                        data = pdecode(chunk)
                     except ValueError as e:
                         self.errback(e.args[0])
                         return
-                else:
+                elif self.fmt == MSG_BYTES:
                     data = chunk
+                else:
+                    raise ValueError('Unknown message format %s' % self.fmt)
                 self.callback((self.op, self.req_id, data))
 
     def start(self):
@@ -117,7 +116,7 @@ class MessageWriter:
         """Encode the given message."""
         if isinstance(data, dict):
             data = pencode(data)
-            fmt = MSG_PACK
+            fmt = MSG_PENCODE
         else:
             fmt = MSG_BYTES
 

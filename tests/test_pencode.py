@@ -21,12 +21,19 @@ def assert_roundtrip(obj):
         # structure, so test passes :)
     except RecursionError:
         pass
+
+    assert type(obj) == type(obj2)
     return obj2
 
 
 def test_roundtrip_unicode():
     """We can round-trip a unicode string."""
     assert_roundtrip(u'I ❤️  emoji')
+
+
+def test_roundtrip_bytes():
+    """We can round-trip Bytes."""
+    assert_roundtrip(b'hello world')
 
 
 def test_roundtrip_list():

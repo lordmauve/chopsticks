@@ -45,7 +45,6 @@ else:
     exec_ = getattr(__builtins__, 'exec')
 from imp import is_builtin
 import time
-import json
 import struct
 import imp
 from collections import namedtuple
@@ -341,9 +340,8 @@ def handle_start(req_id, host, path, depthlimit):
 
 HEADER = struct.Struct('!LLbb')
 
-MSG_JSON = 0
 MSG_BYTES = 1
-MSG_PACK = 2
+MSG_PENCODE = 2
 
 
 def send_msg(op, req_id, data):
@@ -353,14 +351,11 @@ def send_msg(op, req_id, data):
     determine which.
 
     """
-    if isinstance(data, dict):
-        data = json.dumps(data)
-        if not PY2:
-            data = data.encode('ascii')
-        fmt = MSG_JSON
-    else:
+    if isinstance(data, bytes):
         fmt = MSG_BYTES
-
+    else:
+        fmt = MSG_PENCODE
+        data = pencode(data)
     chunk = HEADER.pack(len(data), req_id, op, fmt) + data
     outqueue.put(chunk)
 
@@ -373,13 +368,7 @@ def read_msg():
     data = inpipe.read(size)
     if fmt == MSG_BYTES:
         obj = {'data': data}
-    elif fmt == MSG_JSON:
-        if PY3:
-            data = data.decode('ascii')
-        obj = json.loads(data)
-        if PY2:
-            obj = dict((str(k), v) for k, v in obj.iteritems())
-    elif fmt == MSG_PACK:
+    elif fmt == MSG_PENCODE:
         obj = pdecode(data)
     else:
         debug('Unknown message format %s' % fmt)

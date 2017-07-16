@@ -15,6 +15,7 @@ import chopsticks
 from . import ioloop
 from .setops import SetOps
 from .serialise_main import prepare_callable
+from .pencode import Bytes
 
 
 PY2 = sys.version_info < (3,)
@@ -88,10 +89,10 @@ try:
     # If this is the remote side, we have the bubble code in __main__.__bubble
     bubble = sys.modules['__main__'].__bubble
 except (AttributeError, KeyError):
-    pencode = pkgutil.get_data('chopsticks', 'pencode.py')
+    pencode_bubble = pkgutil.get_data('chopsticks', 'pencode.py')
     bubble = pkgutil.get_data('chopsticks', 'bubble.py')
-    bubble = bubble.replace(b'{{ PENCODE }}', pencode)
-    del pencode
+    bubble = bubble.replace(b'{{ PENCODE }}', pencode_bubble)
+    del pencode_bubble
 
 
 class BaseTunnel(SetOps):
@@ -162,7 +163,7 @@ class BaseTunnel(SetOps):
     @classmethod
     def _read_source(cls, file):
         with open(file, 'rb') as f:
-            return f.read()
+            return Bytes(f.read())
 
     def handle_imp(self, mod):
         key = mod
@@ -181,7 +182,7 @@ class BaseTunnel(SetOps):
                 source=self._read_source(path)
             )
             return
-        elif isinstance(mod, list):
+        elif isinstance(mod, tuple):
             mod, fname = mod
             if not mod:
                 mod, fname = fname.split('/', 1)
