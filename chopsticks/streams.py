@@ -29,7 +29,6 @@ class SendFile(File):
         return (ReadFile, (self.id,))
 
 
-
 class ReadFile(object):
     def __init__(self, id):
         self.id = id
@@ -40,6 +39,3 @@ class ReadFile(object):
 
     def __reduce__(self):
         raise TypeError('%r is not pickleable' % self)
-
-
-

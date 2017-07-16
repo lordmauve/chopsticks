@@ -1,3 +1,12 @@
+"""Groups allow running operations on a group of tunnels in parallel.
+
+Groups can also be used merely for representing groups of hosts, which offers
+capabilities such as set operations and filtering. For example, they can be
+used with Queues to schedule operations asynchronously on a number of hosts.
+
+"""
+
+from operator import not_
 from .setops import SetOps
 from .tunnel import SSHTunnel, loop, PY2, ErrorResult, pickle, RemoteException
 
@@ -194,7 +203,11 @@ class Group(SetOps):
 
         """
         tunnels = self._connect()
-        return self._parallel(tunnels, '_call_async', callable, *args, **kwargs)
+        return self._parallel(
+            tunnels,
+            '_call_async',
+            callable, *args, **kwargs
+        )
 
     @staticmethod
     def _local_paths(tunnels, local_path):
@@ -293,7 +306,7 @@ class Group(SetOps):
         result.raise_failures()
 
         if exclude:
-            op = lambda x: not x
+            op = not_
         else:
             op = bool
 

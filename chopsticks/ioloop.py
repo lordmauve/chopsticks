@@ -2,7 +2,6 @@ from __future__ import print_function
 import sys
 import os
 import fcntl
-import json
 import struct
 import weakref
 from threading import RLock
@@ -17,10 +16,6 @@ PY2 = sys.version_info < (3,)
 
 if PY2:
     bytes = str
-    import cPickle as pickle
-else:
-    import pickle
-    unicode = str
 
 
 def nonblocking_fd(fd):
@@ -78,7 +73,8 @@ class MessageReader:
             chunk = self.buf[:self.need]
             self.buf = self.buf[self.need:]
             if self.msgsize is None:
-                self.msgsize, self.req_id, self.op, self.fmt = HEADER.unpack(chunk)
+                self.msgsize, self.req_id, self.op, self.fmt = \
+                    HEADER.unpack(chunk)
                 self.need = self.msgsize
             else:
                 self.msgsize = None

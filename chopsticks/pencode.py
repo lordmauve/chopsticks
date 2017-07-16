@@ -24,10 +24,12 @@ if PY3:
     bytes_ = bytes
     py2str = ()  # Python 3 has a proper bytes/str distinction, no fudge type
 else:
-    range_ = xrange
+    range_ = xrange  # noqa
     py2str = str
-    bytes_ = ()  # Python 2 doesn't have an explicit bytes type, so don't
-                 # encode anything as bytes unless explicitly tagged
+
+    # Python 2 doesn't have an explicit bytes type, so don't
+    # encode anything as bytes unless explicitly tagged
+    bytes_ = ()
 
 
 class Bytes(object):

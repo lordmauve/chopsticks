@@ -8,8 +8,6 @@ import threading
 import tempfile
 import time
 from hashlib import sha1
-from base64 import b64encode
-from contextlib import contextmanager
 
 import chopsticks
 from . import ioloop

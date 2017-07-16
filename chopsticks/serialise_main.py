@@ -21,6 +21,7 @@ if PY2:
 else:
     import builtins
     exec_ = getattr(builtins, 'exec')
+    long = int
 
 
 def trace_globals(code):
@@ -51,7 +52,8 @@ def iter_opcodes(code):
         if PY2:
             ord_ = ord
         else:
-            ord_ = lambda c: c
+            def ord_(c):
+                return c
         n = len(code)
         i = 0
         extended_arg = 0
@@ -69,7 +71,7 @@ def iter_opcodes(code):
     else:
         # More recent Python 3 has a function for this, though it is
         # not a public API.
-        for _, op, arg in dis._unpack_opargs(code):
+        for _, op, arg in unpack_opargs(code):
             yield (op, arg)
 
 
@@ -148,4 +150,3 @@ def prepare_callable(func, args, kwargs):
         func_data = serialise_func(func)
         return execute_func, (func_data,) + args, kwargs
     return func, args, kwargs
-

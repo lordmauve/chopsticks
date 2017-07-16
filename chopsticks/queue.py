@@ -2,10 +2,9 @@
 from __future__ import print_function
 import sys
 import traceback
-from types import MethodType
 from functools import partial
-from collections import defaultdict, deque
-from .tunnel import loop, PY2, ErrorResult, RemoteException, BaseTunnel
+from collections import deque
+from .tunnel import loop, PY2, BaseTunnel
 from .group import Group, GroupOp
 
 __metaclass__ = type
