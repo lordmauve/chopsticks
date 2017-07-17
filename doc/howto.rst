@@ -56,8 +56,8 @@ To override the path of the interpreter you can simple subclass :class:`Tunnel`
 ``python3`` class attributes::
 
     class MyTunnel(Tunnel):
-        python3 = '/usr/local/bin/python2'
+        python3 = '/usr/local/bin/python3'
 
 To do this for all tunnels of the same type, modify the attribute on the type::
 
-    Tunnel.python2 = '/usr/local/bin/python2'
+    Tunnel.python3 = '/usr/local/bin/python3'
