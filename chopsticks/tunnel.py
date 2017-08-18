@@ -628,6 +628,65 @@ class Sudo(SubprocessTunnel):
         self.proc.wait()
 
 
+class NSEnter(SubprocessTunnel):
+    """A tunnel to a process on the same host, launched with nsenter.
+
+    This is a generic tunnel for all containers using linux namespaces
+    such as docker, systemd-nspawn, rkt, ... that can be spawned as a
+    subprocess of any given process id. This tunnel uses sudo hence it
+    requires the same passworless setup than the Sudo tunnel plus the
+    ``nsenter`` command line utility found in ``linux-utils`` package.
+
+
+    Args:
+        pid (int):  the process id that will be used as parent process for the
+            python interpreter
+
+    Kwargs:
+        keep_environ (bool): specify if the caller's environment should be kept
+
+        namespaces (list): optional list of namespaces to enter, valid
+            namespaces are: 'mount', 'uts', 'ipc', 'net', 'pid'
+            Defautls to all namespaces.
+    """
+
+    def __init__(self, pid, keep_environ=False, namespaces=None):
+        self.pid = int(pid)
+        self.host = 'PID#%s@localhost' % self.pid
+        self.keep_environ = keep_environ
+        valid_namespaces = set(('mount', 'uts', 'ipc', 'net', 'pid'))
+        if namespaces and not set(namespaces).issubset(valid_namespaces):
+            raise ValueError("Invalid namespace %s" %
+                             (namespaces - valid_namespaces))
+        self.namespaces = namespaces or valid_namespaces
+        super(NSEnter, self).__init__()
+
+    def cmd_args(self):
+        uid = os.getuid()
+        gid = os.getegid()
+        args = []
+        if uid != 0:
+            args += ['sudo', '--non-interactive']
+        args += ['nsenter', '-t', str(self.pid)]
+        args += ['--%s' % name for name in self.namespaces]
+        args += ['-S', str(uid), '-G', str(gid)]
+        if not self.keep_environ:
+            env = self.get_environ()
+            args += ['--', 'env', '-i', '-'] + env
+        else:
+            args.append('--')
+        args += super(NSEnter, self).cmd_args()
+        return args
+
+    def get_environ(self):
+        with open('/proc/%d/environ' % self.pid, 'r') as f:
+            return [var for var in f.read().split('\x00') if var.strip()]
+
+    def close(self):
+        self.wpipe.close()
+        self.proc.wait()
+
+
 class Docker(SubprocessTunnel):
     """A tunnel connected to a throwaway Docker container.
 
