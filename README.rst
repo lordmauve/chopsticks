@@ -29,12 +29,16 @@ Example
 With chopsticks you can simply import functions and hand them to the remote
 host to be executed.
 
-First stand up an SSH Tunnel::
+First stand up an SSH Tunnel:
+
+.. code:: python
 
     from chopsticks.tunnel import Tunnel
     tun = Tunnel('troy.example.com')
 
-Then you can pass a function, to be called on the remote host::
+Then you can pass a function, to be called on the remote host:
+
+.. code:: python
 
     import time
     print('Time on %s:' % tun.host, tun.call(time.time))
@@ -44,7 +48,9 @@ create your own libraries of orchestration functions to call on remote hosts
 (as well as functions that call out to remote hosts using Chopsticks).
 
 ``Tunnel`` provides support for executing on a single host; there is also a
-``Group`` that can execute a callable on a number of hosts in parallel::
+``Group`` that can execute a callable on a number of hosts in parallel:
+
+.. code:: python
 
     from chopsticks.group import Group
 
@@ -57,7 +63,9 @@ create your own libraries of orchestration functions to call on remote hosts
         print('%s ip:' % host, addr)
 
 Subclasses of tunnels allow connecting using streams other than SSH, such as
-using ``sudo``, or to fresh Docker containers for sandboxing::
+using ``sudo``, or to fresh Docker containers for sandboxing:
+
+.. code:: python
 
     from chopsticks.tunnel import Docker
     from chopsticks.group import Group
@@ -73,7 +81,9 @@ using ``sudo``, or to fresh Docker containers for sandboxing::
         print('%s Python version:' % host, python_version)
 
 Tunnels and Groups connect lazily (or you can connect them proactively by
-calling ``connect()``). They are also usable as context managers::
+calling ``connect()``). They are also usable as context managers:
+
+.. code:: python
 
     # Explictly connect and disconnect
     group.connect()
@@ -97,7 +107,9 @@ Installation
 ------------
 
 Chopsticks can be used directly from a clone of the repo; or installed with
-pip::
+pip:
+
+.. code:: bash
 
     $ pip install chopsticks
 
