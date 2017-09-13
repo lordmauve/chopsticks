@@ -103,7 +103,7 @@ def serialise_func(f, seen=()):
             else:
                 subdeps = serialise_func(v, seen=seen + (f, v,))
                 vsource, _, _, vnames, vvars = subdeps
-                source += '\n\n' + vsource
+                source = vsource + '\n\n' + source
                 imported_names.update(vnames)
                 variables.update(vvars)
         else:
