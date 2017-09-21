@@ -562,9 +562,12 @@ class SubprocessTunnel(PipeTunnel):
     PYTHON_ARGS = [
         '-usS',
         '-c',
-        'import sys, os; sys.stdin = os.fdopen(0, \'rb\', 0); ' +
-        '__bubble = sys.stdin.read(%d); ' % len(bubble) +
-        'exec(compile(__bubble, \'bubble.py\', \'exec\'))'
+        (
+            'import sys, os; '
+            'inpipe = os.fdopen(os.dup(0), \'rb\'); '
+            '__bubble = inpipe.read(%d); '
+            'exec(compile(__bubble, \'bubble.py\', \'exec\'))'
+        ) % (len(bubble), )
     ]
 
     # Paths to the Python 2/3 binary on the remote host

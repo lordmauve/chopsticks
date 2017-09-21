@@ -10,9 +10,8 @@ def debug(msg):
 
 # Reshuffle fds so that we can't break our transport by printing to stdout
 import os
-infd = os.dup(0)
+# inpipe is defined in the bootstrap command line code in tunnel.py
 outfd = os.dup(1)
-inpipe = os.fdopen(infd, 'rb')
 outpipe = os.fdopen(outfd, 'wb', 0)
 sys.stdin.close()
 sys.stdin = open(os.devnull, 'r')
