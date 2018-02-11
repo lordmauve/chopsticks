@@ -696,7 +696,7 @@ class SSHTunnel(SubprocessTunnel):
         args = ['ssh', '-o', 'PasswordAuthentication=no']
         if self.user:
             args.extend(['-l', self.user])
-        if self.user:
+        if self.port:
             args.extend(['-p', self.port])
         args.append(self.host)
         if self.sudo:
