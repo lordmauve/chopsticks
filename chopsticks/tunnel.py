@@ -679,7 +679,7 @@ class SSHTunnel(SubprocessTunnel):
     :param host: The hostname to connect to, as would be specified on an
                  ``ssh`` command line.
     :param user: The username to connect as.
-    :param port: A custom port other than 22 to connect to.
+    :param port: The tcp port to connect to.
     :param sudo: If true, use ``sudo`` on the remote end in order to run as
                  the ``root`` user. Use this when you can ``sudo`` to root but
                  not ``ssh`` directly as the root user.
@@ -688,7 +688,7 @@ class SSHTunnel(SubprocessTunnel):
     def __init__(self, host, user=None, port=None, sudo=False):
         self.host = host
         self.user = user
-        self.port = str(port)
+        self.port = port
         self.sudo = sudo
         super(SubprocessTunnel, self).__init__()
 
