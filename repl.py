@@ -2,7 +2,6 @@
 from __future__ import print_function, unicode_literals
 import ast
 import sys
-import readline
 import traceback
 
 PY2 = sys.version_info < (3,)
@@ -13,7 +12,7 @@ else:
     from io import StringIO
 
 if PY2:
-    input = raw_input
+    input = raw_input  # noqa
     def exec_(code, namespace):
         exec('exec code in namespace')
 else:
@@ -23,7 +22,6 @@ else:
 def read_stmt():
     stmt = ''
     prompt = '>>> '
-    indented = False
     while True:
         try:
             line = input(prompt)
@@ -52,7 +50,7 @@ def runit(stmt):
     code = compile(stmt, '<stdin>', 'single', dont_inherit=True)
     buf = sys.stdout = StringIO()
     try:
-        result = exec_(code, namespace)
+        exec_(code, namespace)
     except Exception:
         return False, traceback.format_exc()
     return True, buf.getvalue()
