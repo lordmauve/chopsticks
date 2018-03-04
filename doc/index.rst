@@ -10,7 +10,7 @@
 
 Chopsticks is an orchestration and remote execution library. It lets you run
 Python code elsewhere: on remote hosts over SSH, in a Docker sandbox, on the
-local host (optionally with ``sudo``) - even all of these in parallel. It 
+local host (optionally with ``sudo``) - even all of these in parallel. It
 currently runs on Linux and Mac machines.
 
 Nothing needs to be installed on remote hosts except Python and an SSH agent.
@@ -44,6 +44,7 @@ Contents:
     queues
     howto
     examples
+    pencode
     changelog
 
 

@@ -32,10 +32,13 @@ else:
     bytes_ = ()
 
 
-class Bytes(object):
-    """Wrapper to tag a string to be transferred as bytes."""
-    def __init__(self, bytestring):
-        self.bytes = bytestring
+try:
+    Bytes = sys.modules['__bubble__'].Bytes
+except (KeyError, AttributeError):
+    class Bytes(object):
+        """Wrapper to tag a string to be transferred as bytes."""
+        def __init__(self, bytestring):
+            self.bytes = bytestring
 
 
 def pencode(obj):

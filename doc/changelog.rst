@@ -1,6 +1,14 @@
 Version History
 ===============
 
+1.1 - unreleased
+----------------
+
+* Chopsticks now uses a binary serialisation protocol for call results. This
+  broadens the range of of what can be transferred over tunnels to include most
+  primitive Python types.
+* Several bugs are fixed
+
 
 1.0 - 2017-07-06
 ----------------

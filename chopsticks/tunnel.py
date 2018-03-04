@@ -288,8 +288,12 @@ class BaseTunnel(SetOps):
     def call(self, callable, *args, **kwargs):
         """Call the given callable on the remote host.
 
-        The callable must return a value that can be serialised as JSON,
-        but there is no such restriction on the parameters.
+        The parameters must be pickleable.
+
+        The callable must return a value that can be serialised using
+        Chopsticks' binary encoding - generally just primitive Python types.
+        This is somewhat stricter than pickle, because using pickle for results
+        would enable remote hosts to compromise the control host.
 
         """
         self.connect()
@@ -562,12 +566,10 @@ class SubprocessTunnel(PipeTunnel):
     PYTHON_ARGS = [
         '-usS',
         '-c',
-        (
-            'import sys, os; '
-            'inpipe = os.fdopen(os.dup(0), \'rb\'); '
-            '__bubble = inpipe.read(%d); '
-            'exec(compile(__bubble, \'bubble.py\', \'exec\'))'
-        ) % (len(bubble), )
+        'import sys, os; _bsz = %d ;' % len(bubble) +
+        'inpipe = os.fdopen(os.dup(0), \'rb\', _bsz); ' +
+        '__bubble = sys.stdin.read(_bsz); ' +
+        'exec(compile(__bubble, \'bubble.py\', \'exec\'))'
     ]
 
     # Paths to the Python 2/3 binary on the remote host
