@@ -74,6 +74,14 @@ class Pencoder(object):
     def _pencode(self, obj):
         """Inner function for encoding of structures."""
         out = self.out
+        if obj is None:
+            out.append(b'n')
+            return
+
+        if isinstance(obj, bool):
+            out.append(b'T' if obj else b'F')
+            return
+
         objid = id(obj)
         if objid in self.backrefs:
             out.extend([b'R', SZ.pack(self.backrefs[objid])])
@@ -93,8 +101,6 @@ class Pencoder(object):
         elif isinstance(obj, unicode):
             bs = obj.encode('utf8')
             out.extend([b's', bsz(bs), bs])
-        elif isinstance(obj, bool):
-            out.extend([b'1', b't' if obj else b'f'])
         elif isinstance(obj, (int, long)):
             bs = str(int(obj)).encode('ascii')
             out.extend([b'i', bsz(bs), bs])
@@ -111,8 +117,6 @@ class Pencoder(object):
             for k in obj:
                 self._pencode(k)
                 self._pencode(obj[k])
-        elif obj is None:
-            out.append(b'n')
         else:
             raise ValueError('Unserialisable type %s' % type(obj))
 
@@ -165,8 +169,10 @@ class PDecoder(object):
             obj = obuf.read_bytes(sz)
             if not PY2:
                 obj = obj.decode('ascii')
-        elif code == b'1':
-            obj = obuf.read_bytes(1) == b't'
+        elif code == b'F':
+            obj = False
+        elif code == b'T':
+            obj = True
         elif code == b'i':
             sz = obuf.read_size()
             obj = int(obuf.read_bytes(sz))
