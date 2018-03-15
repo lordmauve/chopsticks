@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """Tests for Python-friendly binary encoding."""
+import math
+
 from hypothesis import example, given, strategies
 import pytest
 from chopsticks.pencode import pencode, pdecode
@@ -53,6 +55,12 @@ def assert_roundtrip(obj):
     assert isinstance(buf, bytes)
     obj2 = pdecode(buf)
 
+    assert type(obj) == type(obj2)
+
+    # By definition NaN does not equal anything, even itself
+    if isinstance(obj2, float) and math.isnan(obj2):
+        return obj2
+
     try:
         assert obj == obj2
     except RuntimeError as e:
@@ -63,7 +71,6 @@ def assert_roundtrip(obj):
     except RecursionError:
         pass
 
-    assert type(obj) == type(obj2)
     return obj2
 
 
