@@ -148,10 +148,15 @@ class PDecoder(object):
         return self._decode(obuf(buf))
 
     def _decode(self, obuf):
+        code = obuf.read_bytes(1)
+        if code == b'R':
+            ref_id = obuf.read_size()
+            obj = self.backrefs[ref_id]
+            return obj
+
         br_id = self.br_count
         self.br_count += 1
 
-        code = obuf.read_bytes(1)
         if code == b'n':
             obj = None
         elif code == b'b':
@@ -195,9 +200,6 @@ class PDecoder(object):
                 key = self._decode(obuf)
                 value = self._decode(obuf)
                 obj[key] = value
-        elif code == b'R':
-            ref_id = obuf.read_size()
-            obj = self.backrefs[ref_id]
         else:
             raise ValueError('Unknown pack opcode %r' % code)
 
