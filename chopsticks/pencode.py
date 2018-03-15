@@ -99,7 +99,7 @@ class Pencoder(object):
             bs = str(int(obj)).encode('ascii')
             out.extend([b'i', bsz(bs), bs])
         elif isinstance(obj, float):
-            bs = str(float(obj)).encode('ascii')
+            bs = repr(float(obj)).encode('ascii')
             out.extend([b'f', bsz(bs), bs])
         elif otype in SEQTYPE_CODES:
             code = SEQTYPE_CODES[otype]
