@@ -1,10 +1,44 @@
 # -*- coding: utf-8 -*-
 """Tests for Python-friendly binary encoding."""
+from hypothesis import example, given, strategies
 import pytest
 from chopsticks.pencode import pencode, pdecode
 
 bytes = type(b'')
 
+def is_ascii(s):
+    try:
+        s.decode('ascii')
+    except UnicodeDecodeError:
+        return False
+    return True
+
+ascii_text = strategies.characters(max_codepoint=127)
+ascii_binary = strategies.builds(lambda s: s.encode('ascii'), ascii_text)
+
+immutables = strategies.recursive(
+    ascii_binary |
+    strategies.booleans() |
+    strategies.floats(allow_nan=False) |
+    strategies.integers() |
+    strategies.none() |
+    strategies.text() |
+    strategies.tuples(),
+    lambda children: (
+        strategies.frozensets(children) |
+        strategies.tuples(children)
+    ),
+)
+
+mutables = strategies.recursive(
+    strategies.dictionaries(immutables, immutables) |
+    strategies.lists(immutables) |
+    strategies.sets(immutables),
+    lambda children: (
+        strategies.dictionaries(immutables, children) |
+        strategies.lists(children)
+    ),
+)
 
 def assert_roundtrip(obj):
     """Assert that we can successfully round-trip the given object."""
@@ -26,19 +60,22 @@ def assert_roundtrip(obj):
     return obj2
 
 
-def test_roundtrip_unicode():
+@given(strategies.text())
+def test_roundtrip_unicode(s):
     """We can round-trip a unicode string."""
-    assert_roundtrip(u'I ❤️  emoji')
+    assert_roundtrip(s)
 
 
-def test_roundtrip_bytes():
+@given(ascii_binary)
+def test_roundtrip_bytes(s):
     """We can round-trip Bytes."""
-    assert_roundtrip(b'hello world')
+    assert_roundtrip(s)
 
 
-def test_roundtrip_list():
+@given(strategies.lists(mutables | immutables))
+def test_roundtrip_list(l):
     """We can round-trip a list."""
-    assert_roundtrip([1, 2, 3])
+    assert_roundtrip(l)
 
 
 def test_roundtrip_self_referential():
@@ -58,45 +95,41 @@ def test_roundtrip_backref():
     assert a is b
 
 
-def test_roundtrip_set():
+@given(strategies.sets(immutables))
+def test_roundtrip_set(s):
     """We can round-trip a set."""
-    assert_roundtrip({1, 2, 3})
+    assert_roundtrip(s)
 
 
-def test_roundtrip_tuple():
+@given(strategies.tuples(immutables))
+def test_roundtrip_tuple(t):
     """We can round-trip a tuple of bytes."""
-    assert_roundtrip((b'a', b'b', b'c'))
+    assert_roundtrip(t)
 
 
-def test_roundtrip_frozenset():
+@given(strategies.frozensets(immutables))
+def test_roundtrip_frozenset(s):
     """We can round-trip a frozenset."""
-    assert_roundtrip(frozenset([1, 2, 3]))
+    assert_roundtrip(s)
 
 
-def test_roundtrip_float():
+@given(strategies.floats())
+def test_roundtrip_float(f):
     """We can round-trip a float."""
-    assert_roundtrip(1.1)
+    assert_roundtrip(f)
 
 
-def test_roundtrip_float_inf():
-    """We can round-trip inf."""
-    assert_roundtrip(float('inf'))
-
-
-def test_roundtrip_long():
+@given(strategies.integers())
+@example(10121071034790721094712093712037123)
+def test_roundtrip_int(i):
     """We can round trip what, in Python 2, would be a long."""
-    assert_roundtrip(10121071034790721094712093712037123)
-
-def test_roundtrip_float_nan():
-    """We can round-trip nan."""
-    import math
-    res = pdecode(pencode(float('nan')))
-    assert math.isnan(res)
+    assert_roundtrip(i)
 
 
-def test_roundtrip_dict():
+@given(strategies.dictionaries(immutables, immutables | mutables))
+def test_roundtrip_dict(d):
     """We can round-trip a dict, keyed by frozenset."""
-    assert_roundtrip({frozenset([1, 2, 3]): 'abc'})
+    assert_roundtrip(d)
 
 
 def test_roundtrip_none():
@@ -104,16 +137,17 @@ def test_roundtrip_none():
     assert_roundtrip(None)
 
 
-def test_roundtrip_bool():
+@given(strategies.booleans())
+def test_roundtrip_bool(b):
     """We can round-trip booleans and preserve their types."""
-    res = assert_roundtrip((True, False))
-    for r in res:
-        assert isinstance(r, bool)
+    res = assert_roundtrip(b)
+    assert isinstance(res, bool)
 
 
-def test_roundtrip_kdict():
+@given(strategies.dictionaries(strategies.text(), strategies.text()))
+def test_roundtrip_kdict(d):
     """We handle string-keyed dicts."""
-    assert_roundtrip({'abcd': 'efgh'})
+    assert_roundtrip(d)
 
 
 def test_unserialisable():
