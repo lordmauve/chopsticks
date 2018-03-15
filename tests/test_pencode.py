@@ -4,6 +4,13 @@ from hypothesis import example, given, strategies
 import pytest
 from chopsticks.pencode import pencode, pdecode
 
+try:
+    # Added in Python 3.5+
+    RecursionError
+except NameError:
+    class RecursionError(RuntimeError):
+        pass
+
 bytes = type(b'')
 
 def is_ascii(s):
