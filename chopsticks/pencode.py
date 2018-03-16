@@ -65,7 +65,6 @@ CODE_SEQTYPES = dict((v, k) for k, v in SEQTYPE_CODES.items())
 class Pencoder(object):
     def __init__(self):
         self.out = []
-        self.objs = 0
         self.backrefs = {}
 
     def getvalue(self):
