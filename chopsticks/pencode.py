@@ -10,6 +10,7 @@ import struct
 import codecs
 
 SZ = struct.Struct('!I')
+REF = struct.Struct('!cI')
 
 utf8_decode = codecs.getdecoder('utf8')
 
@@ -75,10 +76,10 @@ class Pencoder(object):
         out = self.out
         objid = id(obj)
         if objid in self.backrefs:
-            out.extend([b'R', SZ.pack(self.backrefs[objid])])
+            out.append(self.backrefs[objid])
             return
         else:
-            self.backrefs[objid] = len(self.backrefs)
+            self.backrefs[objid] = REF.pack(b'R', len(self.backrefs))
 
         otype = type(obj)
 
