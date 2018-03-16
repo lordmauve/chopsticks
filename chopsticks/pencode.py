@@ -45,7 +45,7 @@ except (KeyError, AttributeError):
 def pencode(obj):
     """Encode the given Python primitive structure, returning a byte string."""
     p = Pencoder()
-    p._pencode(obj)
+    p._pencode(obj, p.backrefs, p.out)
     return p.getvalue()
 
 
@@ -75,15 +75,14 @@ class Pencoder(object):
     def getvalue(self):
         return b''.join(self.out)
 
-    def _pencode(self, obj):
+    def _pencode(self, obj, backrefs, out):
         """Inner function for encoding of structures."""
-        out = self.out
         objid = id(obj)
-        if objid in self.backrefs:
-            out.append(self.backrefs[objid])
+        if objid in backrefs:
+            out.append(backrefs[objid])
             return
         else:
-            self.backrefs[objid] = REF.pack(b'R', len(self.backrefs))
+            backrefs[objid] = REF.pack(b'R', len(backrefs))
 
         otype = type(obj)
 
@@ -106,13 +105,15 @@ class Pencoder(object):
         elif otype in SEQTYPE_CODES:
             code = SEQTYPE_CODES[otype]
             out.extend([code, bsz(obj)])
+            _pencode = self._pencode
             for item in obj:
-                self._pencode(item)
+                _pencode(item, backrefs, out)
         elif isinstance(obj, dict):
             out.extend([b'd', bsz(obj)])
+            _pencode = self._pencode
             for k in obj:
-                self._pencode(k)
-                self._pencode(obj[k])
+                _pencode(k, backrefs, out)
+                _pencode(obj[k], backrefs, out)
         else:
             raise ValueError('Unserialisable type %s' % type(obj))
 
