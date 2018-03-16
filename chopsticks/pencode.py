@@ -54,6 +54,30 @@ def bsz(seq):
     return SZ.pack(len(seq))
 
 
+def _pencode_bytes_(obj):
+    return [b'b', bsz(obj), obj]
+
+def _pencode_Bytes(obj):
+    return [b'b', bsz(obj.bytes), obj.bytes]
+
+def _pencode_py2str(obj):
+    bs = obj.encode('ascii')
+    return [b'S', bsz(bs), bs]
+
+def _pencode_unicode(obj):
+    bs = obj.encode('utf8')
+    return [b's', bsz(bs), bs]
+
+def _pencode_int(obj):
+    bs = str(int(obj)).encode('ascii')
+    return [b'i', bsz(bs), bs]
+
+_pencode_long = _pencode_int
+
+def _pencode_float(obj):
+    bs = repr(float(obj)).encode('ascii')
+    return [b'f', bsz(bs), bs]
+
 SEQTYPE_CODES = {
     set: b'q',
     frozenset: b'Q',
@@ -62,6 +86,15 @@ SEQTYPE_CODES = {
 }
 CODE_SEQTYPES = dict((v, k) for k, v in SEQTYPE_CODES.items())
 
+VALTYPE_FUNCS = {
+    bytes_: _pencode_bytes_,
+    Bytes: _pencode_Bytes,
+    py2str: _pencode_py2str,
+    unicode: _pencode_unicode,
+    int: _pencode_int,
+    long: _pencode_long,
+    float: _pencode_float,
+}
 
 class Pencoder(object):
     def __init__(self):
@@ -85,23 +118,9 @@ class Pencoder(object):
             backrefs[objid] = REF.pack(b'R', len(backrefs))
 
         otype = type(obj)
-
-        if isinstance(obj, bytes_):
-            out.extend([b'b', bsz(obj), obj])
-        elif isinstance(obj, Bytes):
-            out.extend([b'b', bsz(obj.bytes), obj.bytes])
-        elif isinstance(obj, py2str):
-            bs = obj.encode('ascii')
-            out.extend([b'S', bsz(bs), bs])
-        elif isinstance(obj, unicode):
-            bs = obj.encode('utf8')
-            out.extend([b's', bsz(bs), bs])
-        elif isinstance(obj, (int, long)):
-            bs = str(int(obj)).encode('ascii')
-            out.extend([b'i', bsz(bs), bs])
-        elif isinstance(obj, float):
-            bs = repr(float(obj)).encode('ascii')
-            out.extend([b'f', bsz(bs), bs])
+        if otype in VALTYPE_FUNCS:
+            func = VALTYPE_FUNCS[otype]
+            out.extend(func(obj))
         elif otype in SEQTYPE_CODES:
             code = SEQTYPE_CODES[otype]
             out.extend([code, bsz(obj)])
