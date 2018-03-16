@@ -66,7 +66,11 @@ CODE_SEQTYPES = dict((v, k) for k, v in SEQTYPE_CODES.items())
 class Pencoder(object):
     def __init__(self):
         self.out = []
-        self.backrefs = {}
+        self.backrefs = {
+            id(None): b'n',
+            id(False): b'F',
+            id(True): b'T',
+        }
 
     def getvalue(self):
         return b''.join(self.out)
@@ -93,8 +97,6 @@ class Pencoder(object):
         elif isinstance(obj, unicode):
             bs = obj.encode('utf8')
             out.extend([b's', bsz(bs), bs])
-        elif isinstance(obj, bool):
-            out.extend([b'1', b't' if obj else b'f'])
         elif isinstance(obj, (int, long)):
             bs = str(int(obj)).encode('ascii')
             out.extend([b'i', bsz(bs), bs])
@@ -111,8 +113,6 @@ class Pencoder(object):
             for k in obj:
                 self._pencode(k)
                 self._pencode(obj[k])
-        elif obj is None:
-            out.append(b'n')
         else:
             raise ValueError('Unserialisable type %s' % type(obj))
 
@@ -141,14 +141,21 @@ def pdecode(buf):
 
 class PDecoder(object):
     def __init__(self):
-        self.br_count = 0
-        self.backrefs = {}
+        self.br_count = 3
+        self.backrefs = {
+            b'n': None,
+            b'F': False,
+            b'T': True,
+        }
 
     def decode(self, buf):
         return self._decode(obuf(buf))
 
     def _decode(self, obuf):
         code = obuf.read_bytes(1)
+        if code in self.backrefs:
+            return self.backrefs[code]
+
         if code == b'R':
             ref_id = obuf.read_size()
             obj = self.backrefs[ref_id]
@@ -157,9 +164,7 @@ class PDecoder(object):
         br_id = self.br_count
         self.br_count += 1
 
-        if code == b'n':
-            obj = None
-        elif code == b'b':
+        if code == b'b':
             sz = obuf.read_size()
             obj = obuf.read_bytes(sz)
         elif code == b's':
@@ -170,8 +175,6 @@ class PDecoder(object):
             obj = obuf.read_bytes(sz)
             if not PY2:
                 obj = obj.decode('ascii')
-        elif code == b'1':
-            obj = obuf.read_bytes(1) == b't'
         elif code == b'i':
             sz = obuf.read_size()
             obj = int(obuf.read_bytes(sz))
