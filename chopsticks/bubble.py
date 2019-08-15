@@ -53,6 +53,7 @@ import traceback
 from base64 import b64decode
 import tempfile
 import codecs
+import site
 
 
 outqueue = Queue(maxsize=10)
@@ -60,9 +61,11 @@ tasks = Queue()
 done = object()
 
 running = True
+local_imports = False
 
 Imp = namedtuple('Imp', 'exists is_pkg file source')
 PREFIX = 'chopsticks://'
+SITE_PACKAGES = site.getsitepackages() + [site.getusersitepackages()]
 
 
 class Loader:
@@ -118,6 +121,10 @@ class Loader:
         return imp
 
     def find_module(self, fullname, path=None):
+        global local_imports
+        if local_imports:
+            return None
+
         try:
             self.get(fullname)
         except ImportError:

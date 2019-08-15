@@ -1,4 +1,5 @@
 from __future__ import print_function
+import contextlib
 import subprocess
 import sys
 import os
@@ -8,6 +9,7 @@ import threading
 import tempfile
 import time
 from hashlib import sha1
+import sys
 
 import chopsticks
 from . import ioloop
@@ -45,6 +47,33 @@ OP_PUT_END = 9
 OP_START = 10
 
 CHOPSTICKS_PREFIX = 'chopsticks://'
+
+
+@contextlib.contextmanager
+def local_imports():
+    try:
+        import __bubble__
+    except ImportError:
+        # We do not want to prevent some code to run both locally and remotely
+        yield
+    else:
+        # Add the site-packages directories to sys.path
+        for path in __bubble__.SITE_PACKAGES:
+            if path not in sys.path:
+                sys.path.append(path)
+
+        # Keep the old state in order to cover recursive calls to local_imports
+        old = __bubble__.local_imports
+        __bubble__.local_imports = True
+        try:
+            yield
+        finally:
+            __bubble__.local_imports = old
+            if not __bubble__.local_imports:
+                # Remove the site-packages directories from sys.path
+                for path in __bubble__.SITE_PACKAGES:
+                    if path in sys.path:
+                        sys.path.remove(path)
 
 
 def start_errloop():
