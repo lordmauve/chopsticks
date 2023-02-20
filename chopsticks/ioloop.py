@@ -302,4 +302,5 @@ class IOLoop:
             self.running = True
             while self.running and (self.read or self.write):
                 self.step()
+        self.stop(self.result)
         return self.result

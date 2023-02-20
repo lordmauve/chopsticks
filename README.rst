@@ -11,7 +11,8 @@ remote hosts over SSH.
 Naturally this is agentless and nothing needs to be installed on the remote
 host except Python and an SSH agent.
 
-It also has support for executing code in Docker containers.
+It also has support for executing code in Docker or any linux namespaces based
+containers.
 
 It's perhaps best compared to Ansible or Fabric, but has some clever transport
 magic which means it's very easy to develop with: you just write Python
